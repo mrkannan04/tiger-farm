@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tiger Farm — Inventory & Farm Management</title>
+  <meta name="description" content="Tiger Farm modern inventory tracking and analytics" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/print.css" media="print" />
+  <!-- Chart.js for data visualization -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- Desktop & Tablet Sidebar -->
+  <aside class="sidebar" id="sidebar" role="navigation" aria-label="Main Navigation">
+    <div class="sidebar-logo">
+      <span class="emoji">🐯</span>
+      <span>Tiger Farm</span>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">Core Operations</div>
+      <button class="nav-link active" data-view="dashboard" id="nav-dashboard">
+        <span class="nav-icon">📊</span>
+        <span>Dashboard</span>
+      </button>
+      <button class="nav-link" data-view="products" id="nav-products">
+        <span class="nav-icon">📦</span>
+        <span>Products & Stock</span>
+      </button>
+      <button class="nav-link" data-view="purchases" id="nav-purchases">
+        <span class="nav-icon">🛒</span>
+        <span>Purchases</span>
+      </button>
+      <button class="nav-link" data-view="usage" id="nav-usage">
+        <span class="nav-icon">🌾</span>
+        <span>Usage Logs</span>
+      </button>
+
+      <div class="nav-label">Insights & Data</div>
+      <button class="nav-link" data-view="analytics" id="nav-analytics">
+        <span class="nav-icon">📈</span>
+        <span>Analytics</span>
+      </button>
+      <button class="nav-link" data-view="notifications" id="nav-notifications">
+        <span class="nav-icon">🔔</span>
+        <span>Alerts</span>
+        <span class="nav-badge" id="navNotifBadge" style="display:none;">0</span>
+      </button>
+      <button class="nav-link" data-view="reports" id="nav-reports">
+        <span class="nav-icon">📑</span>
+        <span>Reports & CSV</span>
+      </button>
+
+      <div class="nav-label">Administration</div>
+      <button class="nav-link" data-view="settings" id="nav-settings">
+        <span class="nav-icon">⚙️</span>
+        <span>Settings</span>
+      </button>
+    </div>
+
+    <div class="sidebar-bottom">
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar" id="userAvatar">A</div>
+        <div class="sidebar-user-info">
+          <strong id="userName">Admin</strong>
+          <small id="userRole">Farm Manager</small>
+        </div>
+      </div>
+      <button class="btn-logout" id="btnLogout" title="Logout">
+        <span>🚪</span> Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main View Area -->
+  <div class="main-content">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div style="display:flex; align-items:center; gap:0.75rem;">
+        <button class="btn btn-ghost btn-sm" id="btnToggleSidebar" style="display:none; padding:0.4rem 0.6rem;">☰</button>
+        <h2 id="pageHeading">Dashboard</h2>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Global Search -->
+        <div class="global-search">
+          <span class="global-search-icon">🔍</span>
+          <input type="text" id="globalSearchInput" placeholder="Quick search..." autocomplete="off" />
+        </div>
+
+        <!-- Quick actions -->
+        <button class="btn btn-secondary btn-sm" id="btnQuickPurchase">
+          <span>+</span> Purchase
+        </button>
+        <button class="btn btn-primary btn-sm" id="btnQuickUsage">
+          <span>-</span> Record Usage
+        </button>
+      </div>
+    </header>
+
+    <!-- Dynamic View Container -->
+    <main class="page-content" id="main-view" role="main">
+      <div class="loading-overlay">
+        <div class="spinner"></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Mobile Bottom Navigation -->
+<nav class="mobile-nav" aria-label="Mobile Navigation">
+  <div class="mobile-nav-inner">
+    <button class="mobile-nav-item active" data-view="dashboard">
+      <span class="nav-icon">📊</span>
+      <span>Dashboard</span>
+    </button>
+    <button class="mobile-nav-item" data-view="products">
+      <span class="nav-icon">📦</span>
+      <span>Products</span>
+    </button>
+    <button class="mobile-nav-item" data-view="purchases">
+      <span class="nav-icon">🛒</span>
+      <span>Purchases</span>
+    </button>
+    <button class="mobile-nav-item" data-view="usage">
+      <span class="nav-icon">🌾</span>
+      <span>Usage</span>
+    </button>
+    <button class="mobile-nav-item" data-view="analytics">
+      <span class="nav-icon">📈</span>
+      <span>Analytics</span>
+    </button>
+  </div>
+</nav>
+
+<!-- Toast Container -->
+<div id="toast-container" aria-live="polite"></div>
+
+<!-- ================================================================
+     MODALS
+     ================================================================ -->
+
+<!-- Quick Purchase Modal -->
+<div class="modal-overlay" id="modalPurchase">
+  <div class="modal" role="dialog" aria-labelledby="modalPurchaseTitle">
+    <div class="modal-header">
+      <h3 id="modalPurchaseTitle">Record New Purchase</h3>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <form id="formPurchase" enctype="multipart/form-data">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="purchaseProduct">Product *</label>
+          <select id="purchaseProduct" name="product_id" required>
+            <option value="">Select product...</option>
+          </select>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="purchaseQty">Quantity *</label>
+            <input type="number" step="any" min="0.01" id="purchaseQty" name="quantity" required placeholder="e.g. 10" />
+          </div>
+          <div class="form-group">
+            <label for="purchaseUnit">Unit *</label>
+            <select id="purchaseUnit" name="unit_id" required>
+              <option value="">Select unit...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="purchaseUnitPrice">Unit Price (₹)</label>
+            <input type="number" step="any" min="0" id="purchaseUnitPrice" name="unit_price" placeholder="Auto calculated if total given" />
+          </div>
+          <div class="form-group">
+            <label for="purchaseTotalPrice">Total Price (₹)</label>
+            <input type="number" step="any" min="0" id="purchaseTotalPrice" name="total_price" placeholder="Auto calculated if unit price given" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="purchaseDate">Purchase Date *</label>
+            <input type="date" id="purchaseDate" name="purchase_date" required />
+          </div>
+          <div class="form-group">
+            <label for="purchaseSupplier">Supplier Name / Vendor</label>
+            <input type="text" id="purchaseSupplier" name="supplier_name" list="supplierDatalist" placeholder="e.g. Kisan Agro Center" />
+            <datalist id="supplierDatalist"></datalist>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="purchaseInvoice">Invoice / Bill No.</label>
+            <input type="text" id="purchaseInvoice" name="invoice_number" placeholder="Optional invoice #" />
+          </div>
+          <div class="form-group">
+            <label for="purchaseBillFile">Attach Bill (Image or PDF)</label>
+            <input type="file" id="purchaseBillFile" name="bill_file" accept=".jpg,.jpeg,.png,.pdf" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="purchaseRemarks">Remarks / Notes</label>
+          <textarea id="purchaseRemarks" name="remarks" placeholder="Optional notes..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitPurchase">Save Purchase</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Quick Usage Modal -->
+<div class="modal-overlay" id="modalUsage">
+  <div class="modal" role="dialog" aria-labelledby="modalUsageTitle">
+    <div class="modal-header">
+      <h3 id="modalUsageTitle">Record Product Usage</h3>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <form id="formUsage">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="usageProduct">Product *</label>
+          <select id="usageProduct" name="product_id" required>
+            <option value="">Select product...</option>
+          </select>
+          <div class="form-hint" id="usageStockHint" style="color:var(--green-dark); font-weight:600;"></div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="usageQty">Quantity Used *</label>
+            <input type="number" step="any" min="0.01" id="usageQty" name="quantity" required placeholder="e.g. 2.5" />
+          </div>
+          <div class="form-group">
+            <label for="usageUnit">Unit *</label>
+            <select id="usageUnit" name="unit_id" required>
+              <option value="">Select unit...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="usageDate">Usage Date *</label>
+            <input type="date" id="usageDate" name="usage_date" required />
+          </div>
+          <div class="form-group">
+            <label for="usageField">Field / Crop / Location</label>
+            <input type="text" id="usageField" name="field_location" list="fieldDatalist" placeholder="e.g. North Field, Tomato Plot" />
+            <datalist id="fieldDatalist"></datalist>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="usageReason">Reason / Application Purpose</label>
+          <input type="text" id="usageReason" name="reason" placeholder="e.g. Pest spray, regular top dressing" />
+        </div>
+
+        <div class="form-group">
+          <label for="usageRemarks">Remarks</label>
+          <textarea id="usageRemarks" name="remarks" placeholder="Optional notes..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitUsage">Save Usage</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add / Edit Product Modal -->
+<div class="modal-overlay" id="modalProduct">
+  <div class="modal" role="dialog" aria-labelledby="modalProductTitle">
+    <div class="modal-header">
+      <h3 id="modalProductTitle">Add New Product</h3>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <form id="formProduct">
+      <input type="hidden" id="productEditId" name="id" value="" />
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="productName">Product Name *</label>
+          <input type="text" id="productName" name="name" required placeholder="e.g. Potassium, Urea, Chlorpyrifos" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="productCategory">Category *</label>
+            <select id="productCategory" name="category_id" required>
+              <option value="">Select category...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="productUnit">Unit of Measure *</label>
+            <select id="productUnit" name="unit_id" required>
+              <option value="">Select unit...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" id="initialQtyGroup">
+            <label for="productInitialQty">Opening Stock Quantity</label>
+            <input type="number" step="any" min="0" id="productInitialQty" name="current_quantity" value="0" />
+          </div>
+          <div class="form-group">
+            <label for="productMinStock">Low Stock Alert Threshold *</label>
+            <input type="number" step="any" min="0" id="productMinStock" name="minimum_stock" value="5" required />
+            <div class="form-hint">Alerts trigger when stock falls to or below this level</div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="productDesc">Description / Specification</label>
+          <textarea id="productDesc" name="description" placeholder="Optional details, supplier specs, formula..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitProduct">Save Product</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Product Detail Modal -->
+<div class="modal-overlay" id="modalProductDetail">
+  <div class="modal" style="max-width:760px;" role="dialog" aria-labelledby="productDetailName">
+    <div class="modal-header">
+      <div style="display:flex; align-items:center; gap:0.5rem;">
+        <h3 id="productDetailName">Product Detail</h3>
+        <span class="badge" id="productDetailStatus">In Stock</span>
+      </div>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <div class="modal-body" id="productDetailBody">
+      <div class="loading-overlay"><div class="spinner"></div></div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" id="btnExportProductPdf">📄 Download PDF History</button>
+      <button type="button" class="btn btn-primary" data-close-modal>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Category Modal -->
+<div class="modal-overlay" id="modalCategory">
+  <div class="modal" role="dialog" aria-labelledby="modalCatTitle">
+    <div class="modal-header">
+      <h3 id="modalCatTitle">Add Category</h3>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <form id="formCategory">
+      <input type="hidden" id="catEditId" value="" />
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="catName">Category Name *</label>
+          <input type="text" id="catName" required placeholder="e.g. Bio-Fertilizer" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="catColor">Color Tag</label>
+            <input type="color" id="catColor" value="#52B788" style="height:42px; padding:2px;" />
+          </div>
+          <div class="form-group">
+            <label for="catDesc">Description</label>
+            <input type="text" id="catDesc" placeholder="Optional description" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Category</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Unit Modal -->
+<div class="modal-overlay" id="modalUnit">
+  <div class="modal" role="dialog" aria-labelledby="modalUnitTitle">
+    <div class="modal-header">
+      <h3 id="modalUnitTitle">Add Measurement Unit</h3>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <form id="formUnit">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="unitName">Unit Name *</label>
+          <input type="text" id="unitName" required placeholder="e.g. Quintal, Gallon" />
+        </div>
+        <div class="form-group">
+          <label for="unitSymbol">Symbol *</label>
+          <input type="text" id="unitSymbol" required placeholder="e.g. Qtl, Gal" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Unit</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Supplier Modal -->
+<div class="modal-overlay" id="modalSupplier">
+  <div class="modal" role="dialog" aria-labelledby="modalSupplierTitle">
+    <div class="modal-header">
+      <h3 id="modalSupplierTitle">Add Supplier</h3>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <form id="formSupplier">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="supplierName">Supplier / Vendor Name *</label>
+          <input type="text" id="supplierName" required placeholder="e.g. Green Valley Agro" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="supplierPhone">Phone</label>
+            <input type="tel" id="supplierPhone" placeholder="e.g. 9876543210" />
+          </div>
+          <div class="form-group">
+            <label for="supplierEmail">Email</label>
+            <input type="email" id="supplierEmail" placeholder="vendor@example.com" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="supplierAddress">Address</label>
+          <textarea id="supplierAddress" placeholder="Optional physical address"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Supplier</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Field Location Modal -->
+<div class="modal-overlay" id="modalField">
+  <div class="modal" role="dialog" aria-labelledby="modalFieldTitle">
+    <div class="modal-header">
+      <h3 id="modalFieldTitle">Add Field / Location</h3>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <form id="formField">
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="fieldName">Field / Section Name *</label>
+          <input type="text" id="fieldName" required placeholder="e.g. Orchard Plot B, Rice Nursery" />
+        </div>
+        <div class="form-group">
+          <label for="fieldDesc">Description</label>
+          <textarea id="fieldDesc" placeholder="Area size, crop details, soil notes..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Location</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- JavaScript Application Modules -->
+<script src="/js/app.js"></script>
+<script src="/js/dashboard.js"></script>
+<script src="/js/products.js"></script>
+<script src="/js/purchases.js"></script>
+<script src="/js/usage.js"></script>
+<script src="/js/analytics.js"></script>
+<script src="/js/notifications.js"></script>
+<script src="/js/reports.js"></script>
+<script src="/js/settings.js"></script>
+
+</body>
+</html>

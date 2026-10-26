@@ -1,0 +1,40 @@
+/* Tiger Farm — Print Stylesheet */
+@media print {
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  body { font-size: 11pt; color: #000; background: #fff; }
+
+  .sidebar, .topbar, .mobile-nav,
+  .btn, .filters-bar, .modal-overlay,
+  #toast-container, .btn-close { display: none !important; }
+
+  .main-content { margin-left: 0 !important; }
+
+  .page-content { padding: 0 !important; }
+
+  .card {
+    border: 1px solid #ccc;
+    box-shadow: none;
+    page-break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+
+  thead th {
+    background: #2D6A4F !important;
+    color: #fff !important;
+    padding: .4rem .6rem;
+    font-size: 8pt;
+  }
+
+  tbody td { padding: .35rem .6rem; border-bottom: 1px solid #ddd; }
+
+  .badge {
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    font-size: 8pt;
+  }
+
+  h1, h2, h3 { page-break-after: avoid; }
+}

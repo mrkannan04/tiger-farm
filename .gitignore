@@ -1,0 +1,24 @@
+# Secrets & local env
+.env
+.env.local
+.neon
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+
+# Database files
+database/*.db
+database/backups/
+instance/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Uploads
+uploads/bills/*
+!uploads/bills/.gitkeep

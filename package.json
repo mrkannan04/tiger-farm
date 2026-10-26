@@ -1,0 +1,11 @@
+{
+  "name": "tiger-farm",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo Build succeeded"
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.4",
+    "@neon/env": "^1.6.5"
+  }
+}
