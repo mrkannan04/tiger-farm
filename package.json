@@ -2,6 +2,8 @@
   "name": "tiger-farm",
   "version": "1.0.0",
   "scripts": {
+    "dev": "python run.py",
+    "start": "python run.py",
     "build": "echo Build succeeded"
   },
   "dependencies": {

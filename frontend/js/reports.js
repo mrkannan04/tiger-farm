@@ -47,8 +47,8 @@ const ReportsView = {
           </p>
           <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.75rem;">
             <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-              <input type="date" id="repPurchFrom" style="flex:1; min-width:120px; font-size:0.8rem; padding:0.3rem;" />
-              <input type="date" id="repPurchTo" style="flex:1; min-width:120px; font-size:0.8rem; padding:0.3rem;" />
+              <input type="date" id="repPurchFrom" style="flex:1; min-width:120px; padding:0.45rem;" />
+              <input type="date" id="repPurchTo" style="flex:1; min-width:120px; padding:0.45rem;" />
             </div>
           </div>
           <button class="btn btn-secondary btn-sm" id="btnDownloadPurchPdf" style="width:100%; justify-content:center;">
@@ -65,8 +65,8 @@ const ReportsView = {
           </p>
           <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.75rem;">
             <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-              <input type="date" id="repUsageFrom" style="flex:1; min-width:120px; font-size:0.8rem; padding:0.3rem;" />
-              <input type="date" id="repUsageTo" style="flex:1; min-width:120px; font-size:0.8rem; padding:0.3rem;" />
+              <input type="date" id="repUsageFrom" style="flex:1; min-width:120px; padding:0.45rem;" />
+              <input type="date" id="repUsageTo" style="flex:1; min-width:120px; padding:0.45rem;" />
             </div>
           </div>
           <button class="btn btn-secondary btn-sm" id="btnDownloadUsagePdf" style="width:100%; justify-content:center;">

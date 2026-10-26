@@ -5,7 +5,13 @@
    ================================================================ */
 
 /* ── Reset & Tokens ────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
 
 :root {
   --green-dark:  #2D6A4F;
@@ -93,6 +99,8 @@ body {
   visibility: hidden;
   transition: opacity 0.25s ease, visibility 0.25s ease;
   pointer-events: none;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .sidebar-backdrop.open {
@@ -102,7 +110,7 @@ body {
 }
 
 body.sidebar-open {
-  overflow: hidden !important;
+  touch-action: none;
 }
 
 .sidebar-top {
@@ -347,6 +355,141 @@ body.sidebar-open {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+/* ── Topbar Quick Action Icons ───────────────────────────────────── */
+.btn-topbar-icon {
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  color: var(--text);
+  font-size: 1.05rem;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  display: inline-flex;
+  transition: all var(--transition);
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+.btn-topbar-icon:hover {
+  background: var(--card-bg);
+  border-color: var(--green-mid);
+}
+
+.topbar-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  border-radius: 99px;
+  padding: 0.05rem 0.35rem;
+  min-width: 16px;
+  text-align: center;
+  line-height: 1.1;
+  border: 2px solid var(--card-bg);
+}
+
+.btn-topbar-user {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  touch-action: manipulation;
+}
+
+.user-avatar-mini {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--green-dark);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--border);
+  transition: border-color var(--transition);
+}
+
+.btn-topbar-user:hover .user-avatar-mini {
+  border-color: var(--green-mid);
+}
+
+/* ── Mobile Navigation & Admin Hub ───────────────────────────────── */
+.modal-mobile-hub {
+  max-width: 480px;
+}
+
+.mobile-admin-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+}
+
+.mobile-hub-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem;
+}
+
+.mobile-hub-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.85rem;
+  background: var(--card-bg);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: all var(--transition);
+  touch-action: manipulation;
+  position: relative;
+  width: 100%;
+}
+
+.mobile-hub-card:active,
+.mobile-hub-card:hover {
+  background: var(--green-light);
+  border-color: var(--green-mid);
+}
+
+.mobile-hub-card .hub-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.mobile-hub-card .hub-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.mobile-hub-card .hub-desc {
+  font-size: 0.7rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+  line-height: 1.25;
 }
 
 /* Global search */

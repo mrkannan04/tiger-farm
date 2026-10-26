@@ -50,12 +50,22 @@ const App = {
   renderUser() {
     const u = this.state.user;
     if (!u) return;
-    const nameEl = document.getElementById('userName');
-    const roleEl = document.getElementById('userRole');
-    const avatarEl = document.getElementById('userAvatar');
-    if (nameEl) nameEl.textContent = u.full_name || u.username;
-    if (roleEl) roleEl.textContent = (u.role || 'manager').toUpperCase();
-    if (avatarEl) avatarEl.textContent = (u.username || 'A')[0].toUpperCase();
+    const name = u.full_name || u.username;
+    const role = (u.role || 'manager').toUpperCase();
+    const letter = (u.username || 'A')[0].toUpperCase();
+
+    ['userName', 'mobileUserName'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = name;
+    });
+    ['userRole', 'mobileUserRole'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = role;
+    });
+    ['userAvatar', 'topUserAvatar', 'mobileUserAvatar'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = letter;
+    });
   },
 
   async loadMetadata() {
@@ -162,8 +172,9 @@ const App = {
     const headEl = document.getElementById('pageHeading');
     if (headEl) headEl.textContent = titleMap[viewName] || 'Tiger Farm';
 
-    // Auto-close mobile/tablet sidebar when route changes
+    // Auto-close mobile/tablet sidebar and mobile hub modal when route changes
     this.closeSidebar();
+    this.closeModal('modalMobileMenu');
 
     // Render target view directly from database
     const mainView = document.getElementById('main-view');
@@ -181,8 +192,11 @@ const App = {
     const modal = document.getElementById(modalId);
     if (modal) {
       modal.classList.add('open');
-      const firstInput = modal.querySelector('input:not([type="hidden"]), select, textarea');
-      if (firstInput) setTimeout(() => firstInput.focus(), 50);
+      // Only auto-focus inputs on desktop; on mobile (<= 768px), auto-focusing immediately forces software keyboard & viewport zoom
+      if (window.innerWidth > 768) {
+        const firstInput = modal.querySelector('input:not([type="hidden"]), select, textarea');
+        if (firstInput) setTimeout(() => firstInput.focus(), 50);
+      }
     }
   },
 
@@ -216,15 +230,18 @@ const App = {
       const res = await fetch('/api/notifications?unread_only=true&per_page=1');
       if (res.ok) {
         const data = await res.json();
-        const badge = document.getElementById('navNotifBadge');
-        if (badge) {
-          if (data.unread_count > 0) {
-            badge.textContent = data.unread_count;
-            badge.style.display = 'inline-block';
-          } else {
-            badge.style.display = 'none';
+        const count = data.unread_count || 0;
+        ['navNotifBadge', 'topNotifBadge', 'bottomNotifBadge'].forEach(id => {
+          const badge = document.getElementById(id);
+          if (badge) {
+            if (count > 0) {
+              badge.textContent = count;
+              badge.style.display = 'inline-block';
+            } else {
+              badge.style.display = 'none';
+            }
           }
-        }
+        });
       }
     } catch {}
   },
@@ -283,7 +300,16 @@ const App = {
       btnMobileMore.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.toggleSidebar();
+        this.openModal('modalMobileMenu');
+      });
+    }
+
+    const btnTopUser = document.getElementById('btnTopUser');
+    if (btnTopUser) {
+      btnTopUser.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openModal('modalMobileMenu');
       });
     }
 
@@ -308,15 +334,17 @@ const App = {
     });
 
     // Logout: Terminates user session only; never destroys farm database records
-    const btnLogout = document.getElementById('btnLogout');
-    if (btnLogout) {
-      btnLogout.addEventListener('click', async () => {
-        if (confirm('Are you sure you want to sign out? Your farm data remains completely safe.')) {
-          await fetch('/api/auth/logout', { method: 'POST' });
-          window.location.href = '/';
-        }
-      });
-    }
+    const handleLogout = async () => {
+      if (confirm('Are you sure you want to sign out? Your farm data remains completely safe in the database.')) {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        window.location.href = '/';
+      }
+    };
+
+    ['btnLogout', 'btnMobileLogout', 'btnMobileLogoutFooter'].forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) btn.addEventListener('click', handleLogout);
+    });
 
     // Quick Purchase button
     const btnQP = document.getElementById('btnQuickPurchase');

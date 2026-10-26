@@ -100,6 +100,20 @@
       </div>
 
       <div class="topbar-right">
+        <!-- Direct Quick Icons for Alerts, Settings, Profile on Mobile & Desktop -->
+        <button class="btn-topbar-icon" id="btnTopAlerts" data-view="notifications" title="Alerts & System Warnings" aria-label="View Alerts">
+          <span>🔔</span>
+          <span class="topbar-badge" id="topNotifBadge" style="display:none;">0</span>
+        </button>
+
+        <button class="btn-topbar-icon" id="btnTopSettings" data-view="settings" title="Farm Settings" aria-label="Open Settings">
+          <span>⚙️</span>
+        </button>
+
+        <button class="btn-topbar-user" id="btnTopUser" title="Admin Account & Sign Out" aria-label="Admin Profile">
+          <span class="user-avatar-mini" id="topUserAvatar">A</span>
+        </button>
+
         <!-- Global Search -->
         <div class="global-search">
           <span class="global-search-icon">🔍</span>
@@ -127,28 +141,29 @@
   </div>
 </div>
 
-<!-- Mobile Bottom Navigation -->
+<!-- Mobile Bottom Navigation: Features Alert, Report, Dashboard, Products & Menu -->
 <nav class="mobile-nav" aria-label="Mobile Navigation">
   <div class="mobile-nav-inner">
-    <button class="mobile-nav-item active" data-view="dashboard">
+    <button class="mobile-nav-item active" data-view="dashboard" id="bnav-dashboard">
       <span class="nav-icon">📊</span>
       <span>Dashboard</span>
     </button>
-    <button class="mobile-nav-item" data-view="products">
+    <button class="mobile-nav-item" data-view="products" id="bnav-products">
       <span class="nav-icon">📦</span>
       <span>Products</span>
     </button>
-    <button class="mobile-nav-item" data-view="purchases">
-      <span class="nav-icon">🛒</span>
-      <span>Purchases</span>
+    <button class="mobile-nav-item" data-view="notifications" id="bnav-alerts">
+      <span class="nav-icon">🔔</span>
+      <span>Alerts</span>
+      <span class="nav-badge" id="bottomNotifBadge" style="display:none;">0</span>
     </button>
-    <button class="mobile-nav-item" data-view="usage">
-      <span class="nav-icon">🌾</span>
-      <span>Usage</span>
+    <button class="mobile-nav-item" data-view="reports" id="bnav-reports">
+      <span class="nav-icon">📑</span>
+      <span>Reports</span>
     </button>
-    <button class="mobile-nav-item" id="btnMobileMore">
-      <span class="nav-icon">☰</span>
-      <span>More</span>
+    <button class="mobile-nav-item" id="btnMobileMore" title="All Features & Settings">
+      <span class="nav-icon">⚙️</span>
+      <span>Menu</span>
     </button>
   </div>
 </nav>
@@ -489,6 +504,82 @@
         <button type="submit" class="btn btn-primary">Save Location</button>
       </div>
     </form>
+  </div>
+</div>
+
+<!-- Mobile All-Features & Admin Hub Modal Sheet -->
+<div class="modal-overlay" id="modalMobileMenu" role="dialog" aria-label="Mobile Navigation & Admin Hub">
+  <div class="modal modal-mobile-hub">
+    <div class="modal-header">
+      <div style="display:flex; align-items:center; gap:0.6rem;">
+        <span style="font-size:1.4rem;">🐯</span>
+        <h3 style="margin:0; font-size:1.1rem;">Tiger Farm Hub</h3>
+      </div>
+      <button class="btn-close" data-close-modal aria-label="Close menu">&times;</button>
+    </div>
+    <div class="modal-body" style="padding:1rem;">
+      <!-- Admin Profile Card -->
+      <div class="mobile-admin-card">
+        <div class="sidebar-user-avatar" id="mobileUserAvatar" style="width:42px; height:42px; font-size:1.1rem; background:var(--green-mid); color:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:700;">A</div>
+        <div style="flex:1;">
+          <strong id="mobileUserName" style="font-size:1rem; display:block; color:var(--text);">Farm Admin</strong>
+          <small id="mobileUserRole" style="color:var(--muted); font-size:0.8rem;">Farm Manager • Logged In</small>
+        </div>
+        <button class="btn btn-danger btn-sm" id="btnMobileLogout" style="font-size:0.82rem; padding:0.45rem 0.8rem;">
+          🚪 Sign Out
+        </button>
+      </div>
+
+      <!-- Quick Section Links Grid -->
+      <div class="mobile-hub-grid">
+        <button class="mobile-hub-card" data-view="dashboard" data-close-modal>
+          <span class="hub-icon">📊</span>
+          <span class="hub-title">Dashboard</span>
+          <span class="hub-desc">Status & stock overview</span>
+        </button>
+        <button class="mobile-hub-card" data-view="products" data-close-modal>
+          <span class="hub-icon">📦</span>
+          <span class="hub-title">Products & Stock</span>
+          <span class="hub-desc">Inventory catalog & ledger</span>
+        </button>
+        <button class="mobile-hub-card" data-view="purchases" data-close-modal>
+          <span class="hub-icon">🛒</span>
+          <span class="hub-title">Purchases</span>
+          <span class="hub-desc">Invoices, suppliers & costs</span>
+        </button>
+        <button class="mobile-hub-card" data-view="usage" data-close-modal>
+          <span class="hub-icon">🌾</span>
+          <span class="hub-title">Usage Logs</span>
+          <span class="hub-desc">Field application records</span>
+        </button>
+        <button class="mobile-hub-card" data-view="analytics" data-close-modal>
+          <span class="hub-icon">📈</span>
+          <span class="hub-title">Analytics</span>
+          <span class="hub-desc">Cost trends & charts</span>
+        </button>
+        <button class="mobile-hub-card" data-view="notifications" data-close-modal>
+          <span class="hub-icon">🔔</span>
+          <span class="hub-title">Alerts</span>
+          <span class="hub-desc">System threshold warnings</span>
+        </button>
+        <button class="mobile-hub-card" data-view="reports" data-close-modal>
+          <span class="hub-icon">📑</span>
+          <span class="hub-title">Reports & CSV</span>
+          <span class="hub-desc">PDF downloads & spreadsheets</span>
+        </button>
+        <button class="mobile-hub-card" data-view="settings" data-close-modal>
+          <span class="hub-icon">⚙️</span>
+          <span class="hub-title">Settings</span>
+          <span class="hub-desc">Suppliers, units, plots, security</span>
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center;">
+      <button type="button" class="btn btn-ghost" data-close-modal>Close</button>
+      <button type="button" class="btn btn-danger" id="btnMobileLogoutFooter">
+        🚪 Sign Out of Farm
+      </button>
+    </div>
   </div>
 </div>
 

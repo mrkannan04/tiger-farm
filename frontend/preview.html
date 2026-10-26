@@ -68,9 +68,10 @@
     <span style="border-left: 1px solid #52B788; height: 24px; margin: 0 6px;"></span>
     <button class="btn-device" onclick="setPage('dashboard')">📊 Dashboard</button>
     <button class="btn-device" onclick="setPage('products')">📦 Products</button>
-    <button class="btn-device" onclick="setPage('analytics')">📈 Analytics</button>
+    <button class="btn-device" onclick="setPage('notifications')">🔔 Alerts</button>
+    <button class="btn-device" onclick="setPage('reports')">📑 Reports</button>
     <button class="btn-device" onclick="setPage('settings')">⚙️ Settings</button>
-    <button class="btn-device" onclick="toggleDrawer()">☰ Toggle Drawer</button>
+    <button class="btn-device" onclick="openHub()">📱 Open Mobile Hub</button>
   </div>
   <div class="frame-wrapper" id="frameWrap">
     <iframe id="previewFrame" src="/app#dashboard" width="390" height="844"></iframe>
@@ -88,10 +89,11 @@
       const frame = document.getElementById('previewFrame');
       frame.contentWindow.location.hash = '#' + view;
     }
-    function toggleDrawer() {
+    function openHub() {
       const frame = document.getElementById('previewFrame');
-      const btn = frame.contentDocument.getElementById('btnToggleSidebar');
-      if (btn) btn.click();
+      if (frame && frame.contentWindow && frame.contentWindow.App) {
+        frame.contentWindow.App.openModal('modalMobileMenu');
+      }
     }
   </script>
 </body>
