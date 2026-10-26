@@ -38,7 +38,7 @@ const ProductsView = {
           <h1 class="page-title">Products & Inventory Catalog</h1>
           <small>Manage inventory, stock thresholds, and view complete audit movements.</small>
         </div>
-        <div style="display:flex; gap:0.5rem;">
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
           <button class="btn btn-secondary" id="btnExportProductsCsv">📥 Export CSV</button>
           <button class="btn btn-primary" id="btnAddNewProduct"><span>+</span> Add Product</button>
         </div>
@@ -46,7 +46,7 @@ const ProductsView = {
 
       <!-- Filters Toolbar -->
       <div class="filters-bar">
-        <input type="text" id="prodSearch" placeholder="Filter by product name..." value="${this.params.search}" style="min-width:220px;" />
+        <input type="text" id="prodSearch" placeholder="Filter by product name..." value="${this.params.search}" />
 
         <select id="prodCategoryFilter">
           <option value="">All Categories</option>

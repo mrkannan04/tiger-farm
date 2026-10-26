@@ -37,7 +37,7 @@ const PurchasesView = {
 
       <!-- Filters & Date Range Bar -->
       <div class="filters-bar">
-        <input type="text" id="purchSearch" placeholder="Search product, supplier, invoice..." value="${this.params.search}" style="min-width:240px;" />
+        <input type="text" id="purchSearch" placeholder="Search product, supplier, invoice..." value="${this.params.search}" />
 
         <div style="display:flex; align-items:center; gap:0.4rem;">
           <label style="font-size:0.75rem; font-weight:600; color:var(--muted);">FROM:</label>

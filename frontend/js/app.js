@@ -162,6 +162,9 @@ const App = {
     const headEl = document.getElementById('pageHeading');
     if (headEl) headEl.textContent = titleMap[viewName] || 'Tiger Farm';
 
+    // Auto-close mobile/tablet sidebar when route changes
+    this.closeSidebar();
+
     // Render target view directly from database
     const mainView = document.getElementById('main-view');
     mainView.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
@@ -226,9 +229,63 @@ const App = {
     } catch {}
   },
 
+  // ── Sidebar Drawer for Mobile & Tablet ─────────────────────────────────────
+  openSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (sidebar) sidebar.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+    document.body.classList.add('sidebar-open');
+  },
+
+  closeSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (sidebar) sidebar.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+    document.body.classList.remove('sidebar-open');
+  },
+
+  toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar && sidebar.classList.contains('open')) {
+      this.closeSidebar();
+    } else {
+      this.openSidebar();
+    }
+  },
+
   // ── Global Event Bindings ──────────────────────────────────────────────────
   bindEvents() {
     window.addEventListener('hashchange', () => this.handleRouting());
+
+    // Sidebar drawer toggles
+    const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+    if (btnToggleSidebar) {
+      btnToggleSidebar.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleSidebar();
+      });
+    }
+
+    const btnCloseSidebar = document.getElementById('btnCloseSidebar');
+    if (btnCloseSidebar) {
+      btnCloseSidebar.addEventListener('click', () => this.closeSidebar());
+    }
+
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+    if (sidebarBackdrop) {
+      sidebarBackdrop.addEventListener('click', () => this.closeSidebar());
+    }
+
+    const btnMobileMore = document.getElementById('btnMobileMore');
+    if (btnMobileMore) {
+      btnMobileMore.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleSidebar();
+      });
+    }
 
     // Nav clicks
     document.addEventListener('click', (e) => {

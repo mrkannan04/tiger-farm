@@ -48,7 +48,7 @@ const AnalyticsView = {
       </div>
 
       <!-- Charts Row 1: Trend & Category -->
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap:1.25rem; margin-bottom:1.5rem;">
+      <div class="analytics-grid-row">
         <!-- 6-Month Expenditure Trend -->
         <div class="card">
           <h3 class="card-title">📈 6-Month Purchase Trend (₹)</h3>
@@ -75,7 +75,7 @@ const AnalyticsView = {
       </div>
 
       <!-- Row 2: Tables for Reorder & Top Consumed -->
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap:1.25rem;">
+      <div class="analytics-grid-row-tables">
         <!-- Reorder Suggestions -->
         <div class="card">
           <h3 class="card-title">🚨 Smart Reorder Suggestions</h3>

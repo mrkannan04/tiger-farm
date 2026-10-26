@@ -74,7 +74,7 @@ const DashboardView = {
         <div style="display:flex; flex-direction:column; gap:1.25rem;">
           <!-- Recent Purchases -->
           <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">
               <h3 class="card-title" style="margin-bottom:0;">🛒 Recent Purchases</h3>
               <a href="#purchases" class="btn btn-ghost btn-sm">View All Purchases &rarr;</a>
             </div>
@@ -83,7 +83,7 @@ const DashboardView = {
 
           <!-- Recent Usage -->
           <div class="card">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">
               <h3 class="card-title" style="margin-bottom:0;">🌾 Recent Usage Logs</h3>
               <a href="#usage" class="btn btn-ghost btn-sm">View All Logs &rarr;</a>
             </div>

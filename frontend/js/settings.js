@@ -25,7 +25,7 @@ const SettingsView = {
       </div>
 
       <!-- Settings Navigation Tabs -->
-      <div class="filters-bar" style="border-bottom:1px solid var(--border); padding-bottom:0.75rem; margin-bottom:1.5rem;">
+      <div class="settings-tabs-bar">
         <button class="btn ${this.tab === 'suppliers' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="suppliers">🏢 Suppliers</button>
         <button class="btn ${this.tab === 'categories' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="categories">🏷️ Categories</button>
         <button class="btn ${this.tab === 'units' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="units">⚖️ Units of Measure</button>

@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Tiger Farm" />
+  <meta name="theme-color" content="#2D6A4F" />
   <title>Tiger Farm — Inventory & Farm Management</title>
   <meta name="description" content="Tiger Farm modern inventory tracking and analytics" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -16,11 +20,17 @@
 <body>
 
 <div class="app-shell">
-  <!-- Desktop & Tablet Sidebar -->
+  <!-- Sidebar Backdrop Overlay -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
+
+  <!-- Desktop, Tablet & Mobile Sidebar Drawer -->
   <aside class="sidebar" id="sidebar" role="navigation" aria-label="Main Navigation">
-    <div class="sidebar-logo">
-      <span class="emoji">🐯</span>
-      <span>Tiger Farm</span>
+    <div class="sidebar-top">
+      <div class="sidebar-logo">
+        <span class="emoji">🐯</span>
+        <span>Tiger Farm</span>
+      </div>
+      <button class="btn-close-sidebar" id="btnCloseSidebar" aria-label="Close navigation">&times;</button>
     </div>
 
     <div class="nav-section">
@@ -82,8 +92,10 @@
   <div class="main-content">
     <!-- Topbar -->
     <header class="topbar">
-      <div style="display:flex; align-items:center; gap:0.75rem;">
-        <button class="btn btn-ghost btn-sm" id="btnToggleSidebar" style="display:none; padding:0.4rem 0.6rem;">☰</button>
+      <div class="topbar-left">
+        <button class="btn-toggle-sidebar" id="btnToggleSidebar" aria-label="Toggle navigation menu">
+          <span>☰</span>
+        </button>
         <h2 id="pageHeading">Dashboard</h2>
       </div>
 
@@ -91,15 +103,17 @@
         <!-- Global Search -->
         <div class="global-search">
           <span class="global-search-icon">🔍</span>
-          <input type="text" id="globalSearchInput" placeholder="Quick search..." autocomplete="off" />
+          <input type="text" id="globalSearchInput" placeholder="Search..." autocomplete="off" />
         </div>
 
         <!-- Quick actions -->
-        <button class="btn btn-secondary btn-sm" id="btnQuickPurchase">
-          <span>+</span> Purchase
+        <button class="btn btn-secondary btn-sm btn-quick" id="btnQuickPurchase" title="Record Purchase">
+          <span class="btn-icon">🛒</span>
+          <span class="btn-label">+ Buy</span>
         </button>
-        <button class="btn btn-primary btn-sm" id="btnQuickUsage">
-          <span>-</span> Record Usage
+        <button class="btn btn-primary btn-sm btn-quick" id="btnQuickUsage" title="Record Usage">
+          <span class="btn-icon">🌾</span>
+          <span class="btn-label">- Use</span>
         </button>
       </div>
     </header>
@@ -132,9 +146,9 @@
       <span class="nav-icon">🌾</span>
       <span>Usage</span>
     </button>
-    <button class="mobile-nav-item" data-view="analytics">
-      <span class="nav-icon">📈</span>
-      <span>Analytics</span>
+    <button class="mobile-nav-item" id="btnMobileMore">
+      <span class="nav-icon">☰</span>
+      <span>More</span>
     </button>
   </div>
 </nav>

@@ -25,7 +25,7 @@ const ReportsView = {
 
       <!-- Section 1: Printable PDF Reports -->
       <h3 style="font-size:1.1rem; margin-bottom:0.75rem;">📄 Printable PDF Reports (ReportLab)</h3>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:1.25rem; margin-bottom:2rem;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap:1.25rem; margin-bottom:2rem;">
         <!-- Stock Report -->
         <div class="card">
           <div style="font-size:1.8rem; margin-bottom:0.5rem;">📦</div>
@@ -46,9 +46,9 @@ const ReportsView = {
             Itemized breakdown of all supplier invoices, quantities, unit prices, and financial expenditures.
           </p>
           <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.75rem;">
-            <div style="display:flex; gap:0.4rem;">
-              <input type="date" id="repPurchFrom" style="font-size:0.8rem; padding:0.3rem;" />
-              <input type="date" id="repPurchTo" style="font-size:0.8rem; padding:0.3rem;" />
+            <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+              <input type="date" id="repPurchFrom" style="flex:1; min-width:120px; font-size:0.8rem; padding:0.3rem;" />
+              <input type="date" id="repPurchTo" style="flex:1; min-width:120px; font-size:0.8rem; padding:0.3rem;" />
             </div>
           </div>
           <button class="btn btn-secondary btn-sm" id="btnDownloadPurchPdf" style="width:100%; justify-content:center;">
@@ -64,9 +64,9 @@ const ReportsView = {
             Chronological audit of input applications across farm plots, crops, spray schedules, and field sections.
           </p>
           <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.75rem;">
-            <div style="display:flex; gap:0.4rem;">
-              <input type="date" id="repUsageFrom" style="font-size:0.8rem; padding:0.3rem;" />
-              <input type="date" id="repUsageTo" style="font-size:0.8rem; padding:0.3rem;" />
+            <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
+              <input type="date" id="repUsageFrom" style="flex:1; min-width:120px; font-size:0.8rem; padding:0.3rem;" />
+              <input type="date" id="repUsageTo" style="flex:1; min-width:120px; font-size:0.8rem; padding:0.3rem;" />
             </div>
           </div>
           <button class="btn btn-secondary btn-sm" id="btnDownloadUsagePdf" style="width:100%; justify-content:center;">

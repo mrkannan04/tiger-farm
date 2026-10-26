@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Tiger Farm — Mobile & Tablet Responsive Device Preview</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 16px;
+      background: #142318;
+      color: #fff;
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+    }
+    .header-bar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .btn-device {
+      padding: 8px 16px;
+      background: #2D6A4F;
+      color: #fff;
+      border: 1.5px solid #52B788;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .btn-device:hover {
+      background: #3e8263;
+    }
+    .btn-device.active {
+      background: #52B788;
+      color: #142318;
+      font-weight: 700;
+    }
+    .frame-wrapper {
+      position: relative;
+      background: #111;
+      border-radius: 36px;
+      padding: 12px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      border: 4px solid #2D6A4F;
+      transition: all 0.3s ease;
+    }
+    iframe {
+      border: none;
+      border-radius: 24px;
+      background: #fff;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="header-bar">
+    <h3 style="margin: 0 10px 0 0;">🐯 Responsive Preview</h3>
+    <button class="btn-device active" id="btnPhone" onclick="setDevice(390, 844, this)">📱 iPhone (390×844)</button>
+    <button class="btn-device" id="btnSE" onclick="setDevice(375, 667, this)">📱 Small Mobile (375×667)</button>
+    <button class="btn-device" id="btnTablet" onclick="setDevice(768, 800, this)">📟 Tablet (768×800)</button>
+    <span style="border-left: 1px solid #52B788; height: 24px; margin: 0 6px;"></span>
+    <button class="btn-device" onclick="setPage('dashboard')">📊 Dashboard</button>
+    <button class="btn-device" onclick="setPage('products')">📦 Products</button>
+    <button class="btn-device" onclick="setPage('analytics')">📈 Analytics</button>
+    <button class="btn-device" onclick="setPage('settings')">⚙️ Settings</button>
+    <button class="btn-device" onclick="toggleDrawer()">☰ Toggle Drawer</button>
+  </div>
+  <div class="frame-wrapper" id="frameWrap">
+    <iframe id="previewFrame" src="/app#dashboard" width="390" height="844"></iframe>
+  </div>
+
+  <script>
+    function setDevice(w, h, btn) {
+      const frame = document.getElementById('previewFrame');
+      frame.width = w;
+      frame.height = h;
+      document.querySelectorAll('#btnPhone, #btnSE, #btnTablet').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    }
+    function setPage(view) {
+      const frame = document.getElementById('previewFrame');
+      frame.contentWindow.location.hash = '#' + view;
+    }
+    function toggleDrawer() {
+      const frame = document.getElementById('previewFrame');
+      const btn = frame.contentDocument.getElementById('btnToggleSidebar');
+      if (btn) btn.click();
+    }
+  </script>
+</body>
+</html>
