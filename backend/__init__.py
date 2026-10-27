@@ -18,6 +18,7 @@ def create_app(config_name='default'):
     )
 
     app.config.from_object(config[config_name])
+    app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
     db.init_app(app)
@@ -36,6 +37,15 @@ def create_app(config_name='default'):
                dashboard_bp, analytics_bp, notifications_bp, reports_bp, settings_bp):
         app.register_blueprint(bp)
 
+    @app.after_request
+    def set_cache_control(response):
+        """Ensure static assets and responses are never cached stalely by mobile browsers."""
+        if 'Cache-Control' not in response.headers:
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+        return response
+
     @app.route('/')
     def index():
         return send_from_directory(app.static_folder, 'index.html')
@@ -44,6 +54,11 @@ def create_app(config_name='default'):
     @app.route('/app/')
     def app_shell():
         return send_from_directory(app.static_folder, 'app.html')
+
+    @app.route('/preview')
+    @app.route('/preview.html')
+    def preview():
+        return send_from_directory(app.static_folder, 'preview.html')
 
     init_db(app)
     return app

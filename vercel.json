@@ -3,13 +3,22 @@
   "builds": [
     {
       "src": "api/index.py",
-      "use": "@vercel/python"
+      "use": "@vercel/python",
+      "config": {
+        "includeFiles": [
+          "frontend/**",
+          "backend/**"
+        ]
+      }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "api/index.py"
+      "dest": "api/index.py",
+      "headers": {
+        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0"
+      }
     }
   ]
 }

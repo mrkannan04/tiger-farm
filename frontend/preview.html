@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>Tiger Farm — Mobile & Tablet Responsive Device Preview</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 16px;
@@ -14,25 +16,32 @@
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
+      min-height: 100dvh;
     }
     .header-bar {
       display: flex;
-      gap: 10px;
-      margin-bottom: 16px;
+      gap: 8px;
+      margin-bottom: 14px;
       align-items: center;
       flex-wrap: wrap;
       justify-content: center;
+      max-width: 900px;
+      width: 100%;
     }
     .btn-device {
-      padding: 8px 16px;
+      padding: 7px 14px;
       background: #2D6A4F;
       color: #fff;
       border: 1.5px solid #52B788;
       border-radius: 8px;
       cursor: pointer;
       font-weight: 600;
-      font-size: 14px;
+      font-size: 13px;
       transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
     }
     .btn-device:hover {
       background: #3e8263;
@@ -42,6 +51,15 @@
       color: #142318;
       font-weight: 700;
     }
+    .btn-direct-app {
+      background: #D4A017;
+      border-color: #FBBF24;
+      color: #1A1A1A;
+      font-weight: 700;
+    }
+    .btn-direct-app:hover {
+      background: #E5B228;
+    }
     .frame-wrapper {
       position: relative;
       background: #111;
@@ -50,14 +68,34 @@
       box-shadow: 0 20px 50px rgba(0,0,0,0.5);
       border: 4px solid #2D6A4F;
       transition: all 0.3s ease;
+      max-width: 100%;
+      overflow: hidden;
     }
     iframe {
       border: none;
       border-radius: 24px;
       background: #fff;
       display: block;
+      max-width: 100%;
     }
-  </style>
+
+    @media (max-width: 768px) {
+      body {
+        padding: 8px;
+      }
+      .frame-wrapper {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 16px;
+        padding: 4px;
+        border-width: 2px;
+      }
+      iframe {
+        width: 100% !important;
+        height: 78vh !important;
+        border-radius: 12px;
+      }
+    }
 </head>
 <body>
   <div class="header-bar">
@@ -72,6 +110,7 @@
     <button class="btn-device" onclick="setPage('reports')">📑 Reports</button>
     <button class="btn-device" onclick="setPage('settings')">⚙️ Settings</button>
     <button class="btn-device" onclick="openHub()">📱 Open Mobile Hub</button>
+    <a href="/app" class="btn-device btn-direct-app" title="Launch Fullscreen Mobile App">🚀 Direct App (/app)</a>
   </div>
   <div class="frame-wrapper" id="frameWrap">
     <iframe id="previewFrame" src="/app#dashboard" width="390" height="844"></iframe>
@@ -80,10 +119,17 @@
   <script>
     function setDevice(w, h, btn) {
       const frame = document.getElementById('previewFrame');
+      if (window.innerWidth <= 768) {
+        frame.style.width = '100%';
+        frame.style.height = '80vh';
+      } else {
+        frame.style.width = w + 'px';
+        frame.style.height = h + 'px';
+      }
       frame.width = w;
       frame.height = h;
       document.querySelectorAll('#btnPhone, #btnSE, #btnTablet').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn) btn.classList.add('active');
     }
     function setPage(view) {
       const frame = document.getElementById('previewFrame');
@@ -94,6 +140,13 @@
       if (frame && frame.contentWindow && frame.contentWindow.App) {
         frame.contentWindow.App.openModal('modalMobileMenu');
       }
+    }
+
+    // Auto-detect mobile screen on load
+    if (window.innerWidth <= 768) {
+      const frame = document.getElementById('previewFrame');
+      frame.style.width = '100%';
+      frame.style.height = '80vh';
     }
   </script>
 </body>
