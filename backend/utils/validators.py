@@ -41,12 +41,21 @@ def validate_purchase(data):
         errors['product_id'] = 'Please select a product.'
 
     qty = data.get('quantity')
-    try:
-        qty = float(qty)
-        if qty <= 0:
-            errors['quantity'] = 'Quantity must be greater than zero.'
-    except (TypeError, ValueError):
-        errors['quantity'] = 'Please enter a valid quantity.'
+    pkg_count = data.get('package_count')
+
+    if (qty is None or str(qty).strip() == '' or float(qty or 0) <= 0) and pkg_count:
+        try:
+            if float(pkg_count) <= 0:
+                errors['quantity'] = 'Quantity must be greater than zero.'
+        except (TypeError, ValueError):
+            errors['quantity'] = 'Please enter a valid package quantity.'
+    else:
+        try:
+            qty_val = float(qty)
+            if qty_val <= 0:
+                errors['quantity'] = 'Quantity must be greater than zero.'
+        except (TypeError, ValueError):
+            errors['quantity'] = 'Please enter a valid quantity.'
 
     unit_price = data.get('unit_price')
     total_price = data.get('total_price')
@@ -77,12 +86,21 @@ def validate_usage(data):
         errors['product_id'] = 'Please select a product.'
 
     qty = data.get('quantity')
-    try:
-        qty = float(qty)
-        if qty <= 0:
-            errors['quantity'] = 'Quantity must be greater than zero.'
-    except (TypeError, ValueError):
-        errors['quantity'] = 'Please enter a valid quantity.'
+    pkg_count = data.get('package_count')
+
+    if (qty is None or str(qty).strip() == '' or float(qty or 0) <= 0) and pkg_count:
+        try:
+            if float(pkg_count) <= 0:
+                errors['quantity'] = 'Quantity must be greater than zero.'
+        except (TypeError, ValueError):
+            errors['quantity'] = 'Please enter a valid package quantity.'
+    else:
+        try:
+            qty_val = float(qty)
+            if qty_val <= 0:
+                errors['quantity'] = 'Quantity must be greater than zero.'
+        except (TypeError, ValueError):
+            errors['quantity'] = 'Please enter a valid quantity.'
 
     if not data.get('usage_date'):
         errors['usage_date'] = 'Usage date is required.'

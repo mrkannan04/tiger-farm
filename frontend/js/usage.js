@@ -117,7 +117,14 @@ const UsageView = {
               <tr>
                 <td><strong>${u.usage_date}</strong></td>
                 <td><strong style="color:var(--text);">${u.product_name}</strong></td>
-                <td><strong style="color:var(--red); font-size:0.95rem;">-${u.quantity}</strong> <span style="font-size:0.8rem; color:var(--muted);">${u.unit || ''}</span></td>
+                <td>
+                  ${u.package_summary ? `
+                    <div><strong style="color:var(--red); font-size:0.85rem;">-${u.package_summary}</strong></div>
+                    <div style="font-size:0.75rem; color:var(--muted); font-weight:500;">(-${u.quantity} ${u.unit || ''})</div>
+                  ` : `
+                    <strong style="color:var(--red); font-size:0.95rem;">-${u.quantity}</strong> <span style="font-size:0.8rem; color:var(--muted);">${u.unit || ''}</span>
+                  `}
+                </td>
                 <td>
                   <span class="badge badge-muted">📍 ${u.field_location || 'General'}</span>
                 </td>

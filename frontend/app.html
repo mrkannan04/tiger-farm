@@ -183,59 +183,90 @@
       <button class="btn-close" data-close-modal>&times;</button>
     </div>
     <form id="formPurchase" enctype="multipart/form-data">
+      <input type="hidden" id="purchaseUnit" name="unit_id" value="" />
+      <input type="hidden" id="purchasePkgUnit" name="package_unit" value="kg" />
+      <input type="hidden" id="purchaseQty" name="quantity" value="0" />
+
       <div class="modal-body">
+        <!-- Step 1: Product -->
         <div class="form-group">
-          <label for="purchaseProduct">Product *</label>
+          <label for="purchaseProduct">1. Select Product *</label>
           <select id="purchaseProduct" name="product_id" required>
             <option value="">Select product...</option>
           </select>
         </div>
 
         <div class="form-row">
+          <!-- Step 2: Packaging Type -->
           <div class="form-group">
-            <label for="purchaseQty">Quantity *</label>
-            <input type="number" step="any" min="0.01" id="purchaseQty" name="quantity" required placeholder="e.g. 10" />
+            <label for="purchasePkgType">2. Packaging Type *</label>
+            <select id="purchasePkgType" name="packaging_type" required>
+              <option value="Bag">Bag</option>
+              <option value="Bottle">Bottle</option>
+              <option value="Pouch">Pouch</option>
+              <option value="Container">Container</option>
+              <option value="Drum">Drum</option>
+              <option value="Loose">Loose</option>
+            </select>
           </div>
-          <div class="form-group">
-            <label for="purchaseUnit">Unit *</label>
-            <select id="purchaseUnit" name="unit_id" required>
-              <option value="">Select unit...</option>
+
+          <!-- Step 3: Package Size -->
+          <div class="form-group" id="purchasePkgSizeGroup">
+            <label for="purchasePkgSize">3. Package Size *</label>
+            <select id="purchasePkgSize" name="package_size" required>
+              <option value="">Select package size...</option>
             </select>
           </div>
         </div>
 
+        <!-- Step 4: Package Quantity & Unit Rate -->
         <div class="form-row">
           <div class="form-group">
-            <label for="purchaseUnitPrice">Unit Price (₹)</label>
-            <input type="number" step="any" min="0" id="purchaseUnitPrice" name="unit_price" placeholder="Auto calculated if total given" />
+            <label for="purchasePkgCount" id="purchasePkgCountLabel">4. Quantity (Number of Bags) *</label>
+            <input type="number" step="any" min="0.01" id="purchasePkgCount" name="package_count" required placeholder="e.g. 5" />
           </div>
+
           <div class="form-group">
-            <label for="purchaseTotalPrice">Total Price (₹)</label>
-            <input type="number" step="any" min="0" id="purchaseTotalPrice" name="total_price" placeholder="Auto calculated if unit price given" />
+            <label for="purchaseUnitPrice" id="purchasePriceLabel">Unit Price (₹ per Bag)</label>
+            <input type="number" step="any" min="0" id="purchaseUnitPrice" name="unit_price" placeholder="Rate per unit" />
           </div>
+        </div>
+
+        <!-- Step 5: System Total Stock Calculation Display -->
+        <div class="calculation-card" id="purchaseCalculationCard">
+          <div class="calc-formula" id="purchaseCalcFormula">
+            <span>⚙️ System Calculates:</span>
+            <strong id="purchaseCalcResult">0 kg</strong>
+          </div>
+          <span class="calc-badge" id="purchaseCalcBadge">Total Stock Addition</span>
         </div>
 
         <div class="form-row">
           <div class="form-group">
+            <label for="purchaseTotalPrice">Total Purchase Cost (₹)</label>
+            <input type="number" step="any" min="0" id="purchaseTotalPrice" name="total_price" placeholder="Auto calculated from price & quantity" />
+          </div>
+          <div class="form-group">
             <label for="purchaseDate">Purchase Date *</label>
             <input type="date" id="purchaseDate" name="purchase_date" required />
           </div>
+        </div>
+
+        <div class="form-row">
           <div class="form-group">
             <label for="purchaseSupplier">Supplier Name / Vendor</label>
             <input type="text" id="purchaseSupplier" name="supplier_name" list="supplierDatalist" placeholder="e.g. Kisan Agro Center" />
             <datalist id="supplierDatalist"></datalist>
           </div>
-        </div>
-
-        <div class="form-row">
           <div class="form-group">
             <label for="purchaseInvoice">Invoice / Bill No.</label>
             <input type="text" id="purchaseInvoice" name="invoice_number" placeholder="Optional invoice #" />
           </div>
-          <div class="form-group">
-            <label for="purchaseBillFile">Attach Bill (Image or PDF)</label>
-            <input type="file" id="purchaseBillFile" name="bill_file" accept=".jpg,.jpeg,.png,.pdf" />
-          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="purchaseBillFile">Attach Bill (Image or PDF)</label>
+          <input type="file" id="purchaseBillFile" name="bill_file" accept=".jpg,.jpeg,.png,.pdf" />
         </div>
 
         <div class="form-group">
@@ -259,9 +290,13 @@
       <button class="btn-close" data-close-modal>&times;</button>
     </div>
     <form id="formUsage">
+      <input type="hidden" id="usageUnit" name="unit_id" value="" />
+      <input type="hidden" id="usagePkgUnit" name="package_unit" value="kg" />
+      <input type="hidden" id="usageQty" name="quantity" value="0" />
+
       <div class="modal-body">
         <div class="form-group">
-          <label for="usageProduct">Product *</label>
+          <label for="usageProduct">1. Select Product *</label>
           <select id="usageProduct" name="product_id" required>
             <option value="">Select product...</option>
           </select>
@@ -270,32 +305,55 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label for="usageQty">Quantity Used *</label>
-            <input type="number" step="any" min="0.01" id="usageQty" name="quantity" required placeholder="e.g. 2.5" />
+            <label for="usagePkgType">2. Packaging Type *</label>
+            <select id="usagePkgType" name="packaging_type" required>
+              <option value="Bag">Bag</option>
+              <option value="Bottle">Bottle</option>
+              <option value="Pouch">Pouch</option>
+              <option value="Container">Container</option>
+              <option value="Drum">Drum</option>
+              <option value="Loose">Loose</option>
+            </select>
           </div>
-          <div class="form-group">
-            <label for="usageUnit">Unit *</label>
-            <select id="usageUnit" name="unit_id" required>
-              <option value="">Select unit...</option>
+
+          <div class="form-group" id="usagePkgSizeGroup">
+            <label for="usagePkgSize">3. Package Size *</label>
+            <select id="usagePkgSize" name="package_size" required>
+              <option value="">Select package size...</option>
             </select>
           </div>
         </div>
 
         <div class="form-row">
           <div class="form-group">
+            <label for="usagePkgCount" id="usagePkgCountLabel">4. Quantity Used *</label>
+            <input type="number" step="any" min="0.01" id="usagePkgCount" name="package_count" required placeholder="e.g. 2" />
+          </div>
+          <div class="form-group">
             <label for="usageDate">Usage Date *</label>
             <input type="date" id="usageDate" name="usage_date" required />
           </div>
+        </div>
+
+        <!-- Live Usage Calculation Display -->
+        <div class="calculation-card" id="usageCalculationCard">
+          <div class="calc-formula" id="usageCalcFormula">
+            <span>🌾 System Deducts:</span>
+            <strong id="usageCalcResult">0 kg</strong>
+          </div>
+          <span class="calc-badge" style="background:var(--red);">Stock Deduction</span>
+        </div>
+
+        <div class="form-row">
           <div class="form-group">
             <label for="usageField">Field / Crop / Location</label>
             <input type="text" id="usageField" name="field_location" list="fieldDatalist" placeholder="e.g. North Field, Tomato Plot" />
             <datalist id="fieldDatalist"></datalist>
           </div>
-        </div>
-
-        <div class="form-group">
-          <label for="usageReason">Reason / Application Purpose</label>
-          <input type="text" id="usageReason" name="reason" placeholder="e.g. Pest spray, regular top dressing" />
+          <div class="form-group">
+            <label for="usageReason">Reason / Application Purpose</label>
+            <input type="text" id="usageReason" name="reason" placeholder="e.g. Pest spray, regular top dressing" />
+          </div>
         </div>
 
         <div class="form-group">
@@ -311,7 +369,7 @@
   </div>
 </div>
 
-<!-- Add / Edit Product Modal -->
+<!-- Add / Edit Product Modal (Product Master) -->
 <div class="modal-overlay" id="modalProduct">
   <div class="modal" role="dialog" aria-labelledby="modalProductTitle">
     <div class="modal-header">
@@ -323,7 +381,7 @@
       <div class="modal-body">
         <div class="form-group">
           <label for="productName">Product Name *</label>
-          <input type="text" id="productName" name="name" required placeholder="e.g. Potassium, Urea, Chlorpyrifos" />
+          <input type="text" id="productName" name="name" required placeholder="e.g. UREA, DAP, Potash, Liquid Urea" />
         </div>
 
         <div class="form-row">
@@ -334,7 +392,7 @@
             </select>
           </div>
           <div class="form-group">
-            <label for="productUnit">Unit of Measure *</label>
+            <label for="productUnit">Base Unit of Measure *</label>
             <select id="productUnit" name="unit_id" required>
               <option value="">Select unit...</option>
             </select>
@@ -342,25 +400,119 @@
         </div>
 
         <div class="form-row">
-          <div class="form-group" id="initialQtyGroup">
-            <label for="productInitialQty">Opening Stock Quantity</label>
-            <input type="number" step="any" min="0" id="productInitialQty" name="current_quantity" value="0" />
-          </div>
           <div class="form-group">
             <label for="productMinStock">Low Stock Alert Threshold *</label>
             <input type="number" step="any" min="0" id="productMinStock" name="minimum_stock" value="5" required />
             <div class="form-hint">Alerts trigger when stock falls to or below this level</div>
           </div>
+          <div class="form-group">
+            <label for="productStatusSelect">Catalog Status *</label>
+            <select id="productStatusSelect" name="is_active">
+              <option value="true" selected>Active</option>
+              <option value="false">Inactive</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row" style="background:var(--surface-sunken); padding:0.75rem; border-radius:var(--radius); margin-bottom:1rem; border:1px solid var(--border);">
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="productDefaultPackagingType">Default Packaging</label>
+            <select id="productDefaultPackagingType" name="default_packaging_type">
+              <option value="Bag" selected>Bag</option>
+              <option value="Bottle">Bottle</option>
+              <option value="Pouch">Pouch</option>
+              <option value="Container">Container</option>
+              <option value="Drum">Drum</option>
+              <option value="Loose">Loose</option>
+            </select>
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="productDefaultPackageSize">Default Bag Size</label>
+            <input type="number" step="any" min="0.01" id="productDefaultPackageSize" name="default_package_size" placeholder="e.g. 50, 45, 25, 10, 1" />
+          </div>
+          <div class="form-group" style="margin-bottom:0;">
+            <label for="productDefaultQuantity">Default Quantity</label>
+            <input type="number" step="any" min="1" id="productDefaultQuantity" name="default_package_count" value="1" placeholder="e.g. 1" />
+          </div>
+        </div>
+
+        <div class="form-group" id="initialQtyGroup">
+          <label for="productInitialQty">Opening Stock Quantity (in Base Unit)</label>
+          <input type="number" step="any" min="0" id="productInitialQty" name="current_quantity" value="0" />
         </div>
 
         <div class="form-group">
           <label for="productDesc">Description / Specification</label>
-          <textarea id="productDesc" name="description" placeholder="Optional details, supplier specs, formula..."></textarea>
+          <textarea id="productDesc" name="description" placeholder="Optional details, agricultural formulation, specs..."></textarea>
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
         <button type="submit" class="btn btn-primary" id="btnSubmitProduct">Save Product</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Add / Edit Package Size Modal (Package / Unit Master) -->
+<div class="modal-overlay" id="modalPackage">
+  <div class="modal" role="dialog" aria-labelledby="modalPackageTitle">
+    <div class="modal-header">
+      <h3 id="modalPackageTitle">Add Package Size / Unit</h3>
+      <button class="btn-close" data-close-modal>&times;</button>
+    </div>
+    <form id="formPackage">
+      <input type="hidden" id="packageEditId" value="" />
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="pkgPackagingType">Packaging Type *</label>
+          <select id="pkgPackagingType" name="packaging_type" required>
+            <option value="Bag">Bag</option>
+            <option value="Bottle">Bottle</option>
+            <option value="Pouch">Pouch</option>
+            <option value="Container">Container</option>
+            <option value="Drum">Drum</option>
+            <option value="Loose">Loose</option>
+          </select>
+          <div class="form-hint">Reusable packaging container (Bag, Bottle, Loose, etc.)</div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" id="pkgSizeInputGroup">
+            <label for="pkgSize">Package Size *</label>
+            <input type="number" step="any" min="0.01" id="pkgSize" name="package_size" required placeholder="e.g. 50, 25, 1, 250" />
+          </div>
+          <div class="form-group">
+            <label for="pkgUnit">Unit Symbol *</label>
+            <select id="pkgUnit" name="unit_symbol" required>
+              <option value="kg">kg (Kilogram)</option>
+              <option value="g">g (Gram)</option>
+              <option value="L">L (Liter)</option>
+              <option value="ml">ml (Milliliter)</option>
+              <option value="Ton">Ton</option>
+              <option value="Unit">Unit</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="pkgStatus">Status *</label>
+          <select id="pkgStatus" name="is_active">
+            <option value="true" selected>Active</option>
+            <option value="false">Inactive</option>
+          </select>
+        </div>
+
+        <div class="calculation-card" id="pkgPreviewCard">
+          <div class="calc-formula">
+            <span>📦 Preview:</span>
+            <strong id="pkgPreviewText">50 kg Bag</strong>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btnSubmitPackage">Save Package Size</button>
       </div>
     </form>
   </div>

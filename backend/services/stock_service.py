@@ -1,23 +1,60 @@
 from datetime import date
-from ..models import db, Product, StockMovement, Notification, Purchase, Usage
+from ..models import db, Product, StockMovement, Notification, Purchase, Usage, ProductPackageStock, PackageMaster
 
 
-def record_purchase(product_id, quantity, unit_id, unit_price,
-                    total_price, purchase_date, supplier_name=None,
-                    invoice_number=None, remarks=None, bill_file=None):
+def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
+                    total_price=None, purchase_date=None, supplier_name=None,
+                    invoice_number=None, remarks=None, bill_file=None,
+                    packaging_type=None, package_size=None, package_unit=None, package_count=None):
     """
     Transaction-first purchase recorder:
-    1. Validate product and positive quantity.
+    1. Validate product and compute standard quantity from packaging type + package size + count.
     2. Auto-compute total or unit price if missing.
-    3. Create Purchase record.
-    4. Increment product.current_quantity.
-    5. Create StockMovement record (PURCHASE).
+    3. Create Purchase record with packaging details.
+    4. Update product current_quantity and ProductPackageStock breakdown.
+    5. Create StockMovement record with package_summary.
     6. Commit transaction atomically.
     Returns (purchase, None) on success, or (None, error_str) on error.
     """
     product = Product.query.get(product_id)
     if not product:
         return None, 'Product not found in database.'
+
+    if unit_id is None:
+        unit_id = product.unit_id
+
+    if purchase_date is None:
+        purchase_date = date.today()
+
+    unit_sym = product.unit.symbol if product.unit else 'kg'
+
+    # Compute quantity from package parameters if package count is provided
+    pkg_type = (packaging_type or '').strip()
+    p_size = float(package_size) if package_size is not None and str(package_size).strip() != '' else None
+    p_unit = (package_unit or unit_sym).strip()
+    p_count = float(package_count) if package_count is not None and str(package_count).strip() != '' else None
+
+    if pkg_type:
+        if pkg_type.lower() == 'loose':
+            # Loose product: package_count is the quantity in base unit
+            if quantity is None or quantity <= 0:
+                quantity = p_count if p_count and p_count > 0 else 0.0
+            package_summary = f"{quantity:g} {p_unit} Loose"
+            p_size = 1.0
+            p_count = quantity
+        else:
+            # Combined Product + Package Type + Package Size + Quantity
+            if p_size and p_count:
+                multiplier = PackageMaster.compute_multiplier(p_size, p_unit)
+                computed_qty = round(p_count * multiplier, 4)
+                if not quantity or quantity <= 0:
+                    quantity = computed_qty
+                noun = f"{pkg_type}s" if p_count != 1 else pkg_type
+                package_summary = f"{p_count:g} {noun} × {p_size:g} {p_unit} = {quantity:g} {unit_sym}"
+            else:
+                package_summary = f"{quantity:g} {unit_sym}" if quantity else ""
+    else:
+        package_summary = None
 
     try:
         quantity = float(quantity)
@@ -27,11 +64,20 @@ def record_purchase(product_id, quantity, unit_id, unit_price,
     if quantity <= 0:
         return None, 'Quantity must be greater than zero.'
 
+    try:
+        unit_price = float(unit_price or 0.0)
+    except (TypeError, ValueError):
+        unit_price = 0.0
+
+    if total_price is None:
+        total_price = round(quantity * unit_price, 2)
+
     # Calculate prices
     if unit_price and not total_price:
-        total_price = round(float(unit_price) * quantity, 2)
+        total_price = round(float(unit_price) * (p_count if (p_count and pkg_type.lower() != 'loose') else quantity), 2)
     elif total_price and not unit_price:
-        unit_price = round(float(total_price) / quantity, 2)
+        divisor = p_count if (p_count and pkg_type.lower() != 'loose') else quantity
+        unit_price = round(float(total_price) / divisor, 2)
     elif unit_price:
         unit_price = float(unit_price)
     if total_price:
@@ -43,6 +89,11 @@ def record_purchase(product_id, quantity, unit_id, unit_price,
             product_id=product.id,
             quantity=quantity,
             unit_id=unit_id or product.unit_id,
+            packaging_type=pkg_type or None,
+            package_size=p_size,
+            package_unit=p_unit,
+            package_count=p_count,
+            package_summary=package_summary,
             unit_price=unit_price,
             total_price=total_price,
             purchase_date=purchase_date or date.today(),
@@ -52,27 +103,51 @@ def record_purchase(product_id, quantity, unit_id, unit_price,
             bill_file=bill_file,
         )
         db.session.add(purchase)
-        db.session.flush()  # obtain purchase.id
+        db.session.flush()
 
-        # Step 2: Increment current stock persistently
+        # Step 2: Increment product's overall current stock
         product.current_quantity = round(product.current_quantity + quantity, 4)
 
-        # Step 3: Record ledger stock movement
+        # Step 3: Update package stock breakdown
+        if pkg_type:
+            stock_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == pkg_type.lower(),
+                ProductPackageStock.package_size == (p_size or 1.0),
+                db.func.lower(ProductPackageStock.unit_symbol) == p_unit.lower()
+            ).first()
+
+            if stock_item:
+                stock_item.package_count = round(stock_item.package_count + (p_count or quantity), 4)
+                stock_item.total_quantity = round(stock_item.total_quantity + quantity, 4)
+            else:
+                db.session.add(ProductPackageStock(
+                    product_id=product.id,
+                    packaging_type=pkg_type,
+                    package_size=p_size or 1.0,
+                    unit_symbol=p_unit,
+                    package_count=round(p_count or quantity, 4),
+                    total_quantity=round(quantity, 4)
+                ))
+
+        # Step 4: Record ledger stock movement
         movement = StockMovement(
             product_id=product.id,
             movement_type='PURCHASE',
             quantity=quantity,
             balance_after=product.current_quantity,
             reference_id=purchase.id,
+            packaging_type=pkg_type or None,
+            package_summary=package_summary,
             movement_date=purchase.purchase_date,
-            remarks=remarks or f'Purchase invoice #{purchase.invoice_number or purchase.id}',
+            remarks=remarks or (f'{package_summary} | Bill #{purchase.invoice_number or purchase.id}' if package_summary else f'Purchase invoice #{purchase.invoice_number or purchase.id}'),
         )
         db.session.add(movement)
 
-        # Step 4: Update notifications
+        # Step 5: Update notifications
         _check_and_update_notifications(product)
 
-        # Step 5: Commit transaction
+        # Step 6: Commit transaction
         db.session.commit()
         return purchase, None
 
@@ -81,23 +156,54 @@ def record_purchase(product_id, quantity, unit_id, unit_price,
         return None, f'Database transaction failed: {str(e)}'
 
 
-def record_usage(product_id, quantity, unit_id, usage_date,
-                 field_location=None, reason=None, remarks=None):
+def record_usage(product_id, quantity=None, unit_id=None, usage_date=None,
+                 field_location=None, reason=None, remarks=None,
+                 packaging_type=None, package_size=None, package_unit=None, package_count=None):
     """
     Transaction-first usage recorder:
-    1. Find product in DB.
-    2. Read current stock.
-    3. Validate requested quantity.
-    4. REJECT if requested > available:
-       "Insufficient Stock. Available: X KG. Requested: Y KG."
-    5. Deduct quantity.
-    6. Create StockMovement record (USAGE).
-    7. Commit transaction atomically.
+    1. Find product in DB and validate requested packaging & quantity.
+    2. REJECT if requested > available.
+    3. Deduct from product.current_quantity and ProductPackageStock breakdown.
+    4. Create StockMovement record (USAGE) with package_summary.
+    5. Commit transaction atomically.
     Returns (usage, None) on success, or (None, error_str) on error.
     """
     product = Product.query.get(product_id)
     if not product:
         return None, 'Product not found in database.'
+
+    if unit_id is None:
+        unit_id = product.unit_id
+
+    if usage_date is None:
+        usage_date = date.today()
+
+    unit_sym = product.unit.symbol if product.unit else 'kg'
+
+    pkg_type = (packaging_type or '').strip()
+    p_size = float(package_size) if package_size is not None and str(package_size).strip() != '' else None
+    p_unit = (package_unit or unit_sym).strip()
+    p_count = float(package_count) if package_count is not None and str(package_count).strip() != '' else None
+
+    if pkg_type:
+        if pkg_type.lower() == 'loose':
+            if quantity is None or quantity <= 0:
+                quantity = p_count if p_count and p_count > 0 else 0.0
+            package_summary = f"{quantity:g} {p_unit} Loose"
+            p_size = 1.0
+            p_count = quantity
+        else:
+            if p_size and p_count:
+                multiplier = PackageMaster.compute_multiplier(p_size, p_unit)
+                computed_qty = round(p_count * multiplier, 4)
+                if not quantity or quantity <= 0:
+                    quantity = computed_qty
+                noun = f"{pkg_type}s" if p_count != 1 else pkg_type
+                package_summary = f"{p_count:g} {noun} × {p_size:g} {p_unit} = {quantity:g} {unit_sym}"
+            else:
+                package_summary = f"{quantity:g} {unit_sym}" if quantity else ""
+    else:
+        package_summary = None
 
     try:
         quantity = float(quantity)
@@ -107,14 +213,24 @@ def record_usage(product_id, quantity, unit_id, usage_date,
     if quantity <= 0:
         return None, 'Usage quantity must be greater than zero.'
 
-    unit_sym = product.unit.symbol if product.unit else ''
-
-    # SECTION 12: NEVER ALLOW NEGATIVE STOCK
+    # NEVER ALLOW NEGATIVE STOCK
     if quantity > product.current_quantity:
+        avail_fmt = f"{product.current_quantity:.1f}" if product.current_quantity == int(product.current_quantity) else f"{product.current_quantity:g}"
+        req_fmt = f"{quantity:.1f}" if quantity == int(quantity) else f"{quantity:g}"
         return None, (
-            f'Insufficient Stock. Available: {product.current_quantity} {unit_sym}. '
-            f'Requested: {quantity} {unit_sym}.'
+            f'Insufficient Stock. Available: {avail_fmt} {unit_sym}. '
+            f'Requested: {req_fmt} {unit_sym}.'
         )
+
+    # Check package-level stock if specific package was picked
+    stock_item = None
+    if pkg_type and p_size is not None and p_count is not None:
+        stock_item = ProductPackageStock.query.filter(
+            ProductPackageStock.product_id == product.id,
+            db.func.lower(ProductPackageStock.packaging_type) == pkg_type.lower(),
+            ProductPackageStock.package_size == p_size,
+            db.func.lower(ProductPackageStock.unit_symbol) == p_unit.lower()
+        ).first()
 
     try:
         # Step 1: Create usage record
@@ -122,39 +238,54 @@ def record_usage(product_id, quantity, unit_id, usage_date,
             product_id=product.id,
             quantity=quantity,
             unit_id=unit_id or product.unit_id,
+            packaging_type=pkg_type or None,
+            package_size=p_size,
+            package_unit=p_unit,
+            package_count=p_count,
+            package_summary=package_summary,
             usage_date=usage_date or date.today(),
             field_location=(field_location or '').strip() or None,
             reason=(reason or '').strip() or None,
             remarks=(remarks or '').strip() or None,
         )
         db.session.add(usage)
-        db.session.flush()  # obtain usage.id
+        db.session.flush()
 
         # Step 2: Deduct quantity from current stock persistently
-        product.current_quantity = round(product.current_quantity - quantity, 4)
+        product.current_quantity = max(0.0, round(product.current_quantity - quantity, 4))
 
-        # Step 3: Record ledger stock movement
+        # Step 3: Deduct from package stock breakdown if matching package found
+        if stock_item:
+            stock_item.package_count = max(0.0, round(stock_item.package_count - p_count, 4))
+            stock_item.total_quantity = max(0.0, round(stock_item.total_quantity - quantity, 4))
+            if stock_item.package_count <= 0 and stock_item.total_quantity <= 0:
+                db.session.delete(stock_item)
+
+        # Step 4: Record ledger stock movement
         movement = StockMovement(
             product_id=product.id,
             movement_type='USAGE',
             quantity=-quantity,
             balance_after=product.current_quantity,
             reference_id=usage.id,
+            packaging_type=pkg_type or None,
+            package_summary=package_summary,
             movement_date=usage.usage_date,
-            remarks=remarks or (f'Field: {field_location}' if field_location else 'Application consumption'),
+            remarks=remarks or (f'{package_summary} | Field: {field_location or "General"}' if package_summary else (f'Field: {field_location}' if field_location else 'Application consumption')),
         )
         db.session.add(movement)
 
-        # Step 4: Check low stock / out of stock alerts
+        # Step 5: Check low stock / out of stock alerts
         _check_and_update_notifications(product)
 
-        # Step 5: Commit transaction
+        # Step 6: Commit transaction
         db.session.commit()
         return usage, None
 
     except Exception as e:
         db.session.rollback()
         return None, f'Database transaction failed: {str(e)}'
+
 
 
 def get_current_stock(product_id):

@@ -30,9 +30,12 @@ class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'tiger-farm-secret-key-2024')
 
     # Support external cloud databases (PostgreSQL, Neon, Supabase, Render, etc.)
-    raw_db_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL')
-    if raw_db_url and raw_db_url.startswith('postgres://'):
-        raw_db_url = raw_db_url.replace('postgres://', 'postgresql://', 1)
+    if os.environ.get('USE_SQLITE') == '1' or os.environ.get('FLASK_ENV') == 'testing':
+        raw_db_url = None
+    else:
+        raw_db_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL')
+        if raw_db_url and raw_db_url.startswith('postgres://'):
+            raw_db_url = raw_db_url.replace('postgres://', 'postgresql://', 1)
 
     SQLALCHEMY_DATABASE_URI = raw_db_url or f"sqlite:///{DEFAULT_DB_PATH}"
     SQLALCHEMY_TRACK_MODIFICATIONS = False

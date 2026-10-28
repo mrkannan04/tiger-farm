@@ -35,8 +35,8 @@ const ProductsView = {
     this.container.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">Products & Inventory Catalog</h1>
-          <small>Manage inventory, stock thresholds, and view complete audit movements.</small>
+          <h1 class="page-title">Product Master & Inventory Catalog</h1>
+          <small>Manage actual farm products, activate/deactivate items, and view package breakdown stock.</small>
         </div>
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
           <button class="btn btn-secondary" id="btnExportProductsCsv">📥 Export CSV</button>
@@ -54,7 +54,9 @@ const ProductsView = {
         </select>
 
         <select id="prodStatusFilter">
-          <option value="all" ${this.params.status === 'all' ? 'selected' : ''}>All Stock Statuses</option>
+          <option value="all" ${this.params.status === 'all' ? 'selected' : ''}>All Catalog Statuses</option>
+          <option value="active" ${this.params.status === 'active' ? 'selected' : ''}>Active Products Only</option>
+          <option value="inactive" ${this.params.status === 'inactive' ? 'selected' : ''}>Inactive Products Only</option>
           <option value="in_stock" ${this.params.status === 'in_stock' ? 'selected' : ''}>In Stock</option>
           <option value="low_stock" ${this.params.status === 'low_stock' ? 'selected' : ''}>Low Stock</option>
           <option value="out_of_stock" ${this.params.status === 'out_of_stock' ? 'selected' : ''}>Out of Stock</option>
@@ -123,23 +125,51 @@ const ProductsView = {
             <tr>
               <th>Product Name</th>
               <th>Category</th>
-              <th>Current Stock</th>
-              <th>Min Stock</th>
               <th>Status</th>
-              <th>Valuation</th>
+              <th>Bag Size / Default Qty</th>
+              <th>Current Stock</th>
+              <th>Package Breakdown</th>
               <th style="text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody>
             ${products.map(p => {
-              const statusBadge =
-                p.status === 'out_of_stock' ? '<span class="badge badge-red">Out of Stock</span>' :
-                p.status === 'low_stock' ? '<span class="badge badge-amber">Low Stock</span>' :
-                '<span class="badge badge-green">In Stock</span>';
-
               const catColor = p.category_color || '#52B788';
+              const isAct = p.is_active !== false;
+
+              // Build package breakdown display
+              let breakdownHtml = '<span style="color:var(--muted); font-size:0.8rem;">None recorded</span>';
+              if (p.package_breakdown && p.package_breakdown.length) {
+                breakdownHtml = `
+                  <div class="package-breakdown-list">
+                    ${p.package_breakdown.map(b => `
+                      <span class="package-breakdown-item">
+                        📦 ${b.description}
+                      </span>
+                    `).join('')}
+                  </div>
+                `;
+              } else if (p.current_quantity > 0) {
+                breakdownHtml = `
+                  <div class="package-breakdown-list">
+                    <span class="package-breakdown-item">
+                      📦 ${p.current_quantity} ${p.unit || ''} Standard
+                    </span>
+                  </div>
+                `;
+              }
+
+              const bagSizeBadge = p.default_package_size ? `
+                <div>
+                  <span class="badge badge-green" style="font-size:0.85rem; font-weight:600;">
+                    🛍️ ${p.default_package_size} ${p.default_package_unit || 'kg'} ${p.default_packaging_type || 'Bag'}
+                  </span>
+                  <div style="font-size:0.75rem; color:var(--muted); margin-top:0.25rem;">Default: <strong>${p.default_package_count || 1} Bag</strong></div>
+                </div>
+              ` : '<span style="color:var(--muted); font-size:0.85rem;">Standard</span>';
+
               return `
-                <tr>
+                <tr style="${isAct ? '' : 'opacity:0.65; background:rgba(0,0,0,0.015);'}">
                   <td>
                     <strong style="color:var(--text); cursor:pointer;" class="btn-view-product" data-id="${p.id}">${p.name}</strong>
                     ${p.description ? `<div style="font-size:0.75rem; color:var(--muted);">${p.description}</div>` : ''}
@@ -150,13 +180,22 @@ const ProductsView = {
                     </span>
                   </td>
                   <td>
-                    <strong style="font-size:1rem;">${p.current_quantity}</strong>
-                    <span style="font-size:0.8rem; color:var(--muted);">${p.unit || ''}</span>
+                    <button class="btn-toggle-status ${isAct ? 'active' : 'inactive'}" data-id="${p.id}" data-name="${p.name}" title="Click to ${isAct ? 'deactivate' : 'activate'} product">
+                      ${isAct ? '● Active' : '○ Inactive'}
+                    </button>
                   </td>
-                  <td>${p.minimum_stock} <span style="font-size:0.8rem; color:var(--muted);">${p.unit || ''}</span></td>
-                  <td>${statusBadge}</td>
-                  <td>₹${(p.estimated_stock_value || 0).toLocaleString('en-IN')}</td>
-                  <td style="text-align:right;">
+                  <td>
+                    ${bagSizeBadge}
+                  </td>
+                  <td>
+                    <strong style="font-size:1.05rem; color:var(--green-dark);">${p.current_quantity}</strong>
+                    <span style="font-size:0.8rem; color:var(--muted);">${p.unit || ''}</span>
+                    <div style="font-size:0.75rem; color:var(--muted);">Min: ${p.minimum_stock} ${p.unit || ''}</div>
+                  </td>
+                  <td>
+                    ${breakdownHtml}
+                  </td>
+                  <td style="text-align:right; white-space:nowrap;">
                     <button class="btn btn-ghost btn-sm btn-view-product" data-id="${p.id}" title="History & Audit">🔍 Details</button>
                     <button class="btn btn-ghost btn-sm btn-edit-product" data-id="${p.id}" title="Edit product">✏️</button>
                     <button class="btn btn-danger btn-sm btn-delete-product" data-id="${p.id}" data-name="${p.name}" title="Archive">🗑️</button>
@@ -239,6 +278,9 @@ const ProductsView = {
       document.getElementById('productEditId').value = '';
       document.getElementById('modalProductTitle').textContent = 'Add New Product';
       document.getElementById('initialQtyGroup').style.display = 'block';
+      if (document.getElementById('productDefaultPackagingType')) document.getElementById('productDefaultPackagingType').value = 'Bag';
+      if (document.getElementById('productDefaultPackageSize')) document.getElementById('productDefaultPackageSize').value = '';
+      if (document.getElementById('productDefaultQuantity')) document.getElementById('productDefaultQuantity').value = '1';
       App.openModal('modalProduct');
     });
 
@@ -264,6 +306,10 @@ const ProductsView = {
           unit_id: document.getElementById('productUnit').value,
           minimum_stock: document.getElementById('productMinStock').value,
           description: document.getElementById('productDesc').value.trim(),
+          is_active: document.getElementById('productStatusSelect').value === 'true',
+          default_packaging_type: document.getElementById('productDefaultPackagingType')?.value || 'Bag',
+          default_package_size: document.getElementById('productDefaultPackageSize')?.value || null,
+          default_package_count: document.getElementById('productDefaultQuantity')?.value || 1,
         };
 
         if (!editId) {
@@ -299,10 +345,35 @@ const ProductsView = {
   },
 
   bindRowActions(container) {
-    // View Product Detail Drawer (Section 21)
+    // View Product Detail Drawer
     container.querySelectorAll('.btn-view-product').forEach(btn => {
       btn.addEventListener('click', () => {
         this.openProductDetail(btn.dataset.id);
+      });
+    });
+
+    // Toggle Product Active / Inactive Status
+    container.querySelectorAll('.btn-toggle-status').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const id = btn.dataset.id;
+        const name = btn.dataset.name;
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/products/${id}/toggle-status`, { method: 'POST' });
+          const data = await res.json();
+          if (res.ok && data.success !== false) {
+            App.showToast(data.message || `Status updated for "${name}".`);
+            await App.loadMetadata();
+            this.fetchAndRenderList();
+          } else {
+            App.showToast(data.message || 'Failed to update status', 'error');
+          }
+        } catch (err) {
+          App.showToast('Error: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
+        }
       });
     });
 
@@ -322,8 +393,19 @@ const ProductsView = {
           document.getElementById('productCategory').value = p.category_id || '';
           document.getElementById('productUnit').value = p.unit_id || '';
           document.getElementById('productMinStock').value = p.minimum_stock;
+          document.getElementById('productStatusSelect').value = p.is_active ? 'true' : 'false';
           document.getElementById('productDesc').value = p.description || '';
           document.getElementById('initialQtyGroup').style.display = 'none';
+
+          if (document.getElementById('productDefaultPackagingType')) {
+            document.getElementById('productDefaultPackagingType').value = p.default_packaging_type || 'Bag';
+          }
+          if (document.getElementById('productDefaultPackageSize')) {
+            document.getElementById('productDefaultPackageSize').value = p.default_package_size || '';
+          }
+          if (document.getElementById('productDefaultQuantity')) {
+            document.getElementById('productDefaultQuantity').value = p.default_package_count || 1;
+          }
 
           App.openModal('modalProduct');
         } catch (err) {
@@ -332,7 +414,7 @@ const ProductsView = {
       });
     });
 
-    // Delete (Archive) Product (Section 48, 49)
+    // Delete (Archive) Product
     container.querySelectorAll('.btn-delete-product').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
@@ -356,7 +438,7 @@ const ProductsView = {
     });
   },
 
-  // SECTION 21: Full Product Details with Purchase History, Usage History, and Ledger
+  // SECTION 21: Full Product Details with Purchase History, Usage History, Ledger, and Package Breakdown
   async openProductDetail(productId) {
     App.openModal('modalProductDetail');
     const body = document.getElementById('productDetailBody');
@@ -378,12 +460,19 @@ const ProductsView = {
       statusBadge.textContent = p.status === 'out_of_stock' ? 'Out of Stock' : p.status === 'low_stock' ? 'Low Stock' : 'In Stock';
 
       body.innerHTML = `
-        <!-- High Level Stats (Section 21) -->
+        <!-- High Level Stats -->
         <div class="stats-grid" style="margin-bottom:1.25rem;">
           <div class="stat-item">
             <div class="stat-label">Current Stock</div>
             <div class="stat-value green">${p.current_quantity} <small style="font-size:0.85rem;">${p.unit || ''}</small></div>
             <div class="stat-sub">Alert threshold: ${p.minimum_stock} ${p.unit || ''}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">Catalog Status</div>
+            <div class="stat-value" style="font-size:1.15rem; color:${p.is_active ? 'var(--green-dark)' : 'var(--red)'};">
+              ${p.is_active ? '● Active' : '○ Inactive'}
+            </div>
+            <div class="stat-sub">${p.category || 'Fertilizer'}</div>
           </div>
           <div class="stat-item">
             <div class="stat-label">Total Purchased</div>
@@ -405,16 +494,36 @@ const ProductsView = {
             <div class="stat-value">₹${p.average_purchase_price || 0}</div>
             <div class="stat-sub">Per ${p.unit || 'unit'}</div>
           </div>
-          <div class="stat-item">
-            <div class="stat-label">Last Transactions</div>
-            <div style="font-size:0.85rem; font-weight:600; margin-top:0.25rem;">
-              <div>🛒 Buy: <span style="color:var(--text-mid);">${p.last_purchase_date || 'None'}</span></div>
-              <div>🌾 Use: <span style="color:var(--text-mid);">${p.last_usage_date || 'None'}</span></div>
-            </div>
-          </div>
         </div>
 
-        <!-- Section 21: Purchase History Table -->
+        <!-- Section 8 & 11: Package Stock Breakdown Card -->
+        <div style="background:rgba(82,183,136,0.08); border:1.5px solid rgba(82,183,136,0.3); border-radius:var(--radius); padding:0.9rem 1.1rem; margin-bottom:1.25rem;">
+          <h4 style="font-size:0.95rem; margin-bottom:0.6rem; color:var(--green-dark); display:flex; align-items:center; gap:0.4rem;">
+            <span>📦</span> Current Packages on Hand (Stock Breakdown)
+          </h4>
+          ${(p.package_breakdown && p.package_breakdown.length) ? `
+            <div style="display:flex; flex-direction:column; gap:0.45rem;">
+              ${p.package_breakdown.map(b => `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:0.5rem 0.85rem; border-radius:6px; border:1px solid var(--border);">
+                  <span>
+                    <strong style="color:var(--text);">${b.packaging_type}</strong>
+                    <span style="color:var(--muted); font-size:0.85rem;">(${b.package_size} ${b.unit_symbol})</span>
+                  </span>
+                  <span>
+                    <strong style="color:var(--green-dark);">${b.package_count} ${b.packaging_type}${b.package_count != 1 ? 's' : ''}</strong>
+                    <span style="color:var(--muted); font-size:0.85rem;">= ${b.total_quantity} ${p.unit || ''}</span>
+                  </span>
+                </div>
+              `).join('')}
+            </div>
+          ` : `
+            <div style="color:var(--text-mid); font-size:0.85rem; background:#fff; padding:0.6rem 0.85rem; border-radius:6px; border:1px solid var(--border);">
+              📦 <strong>Total Stock:</strong> ${p.current_quantity} ${p.unit || ''} (Standard Inventory)
+            </div>
+          `}
+        </div>
+
+        <!-- Purchase History Table -->
         <h4 style="font-size:0.95rem; margin-bottom:0.4rem; display:flex; align-items:center; gap:0.4rem;">
           <span>🛒</span> Purchase History
         </h4>
@@ -423,7 +532,7 @@ const ProductsView = {
             <thead>
               <tr>
                 <th>Date</th>
-                <th>Quantity</th>
+                <th>Package / Quantity</th>
                 <th>Rate</th>
                 <th>Total</th>
                 <th>Supplier</th>
@@ -434,7 +543,7 @@ const ProductsView = {
               ${(p.purchases || []).map(purch => `
                 <tr>
                   <td>${purch.purchase_date}</td>
-                  <td><strong>${purch.quantity} ${p.unit || ''}</strong></td>
+                  <td><strong>${purch.package_summary || `${purch.quantity} ${p.unit || ''}`}</strong></td>
                   <td>₹${purch.unit_price || 0}</td>
                   <td><strong>₹${(purch.total_price || 0).toLocaleString('en-IN')}</strong></td>
                   <td>${purch.supplier_name || purch.supplier || '—'}</td>

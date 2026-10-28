@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, session
-from ..models import db, Product, Category, Unit, ActivityLog, StockMovement
+from ..models import db, Product, Category, Unit, ActivityLog, StockMovement, PackageMaster, ProductPackageStock
 from ..utils.validators import validate_product
 from ..services.stock_service import (
     _check_and_update_notifications, get_product_stock_history, reconcile_product_stock
@@ -30,7 +30,15 @@ def list_products():
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('per_page', 20))
 
-    query = Product.query.filter_by(is_active=True)
+    if status == 'inactive':
+        query = Product.query.filter_by(is_active=False)
+    elif status == 'all':
+        query = Product.query
+    elif status == 'active':
+        query = Product.query.filter_by(is_active=True)
+    else:
+        # Default or in_stock/low_stock/out_of_stock filter on active items
+        query = Product.query.filter_by(is_active=True)
 
     if search:
         query = query.filter(Product.name.ilike(f'%{search}%'))
@@ -50,8 +58,8 @@ def list_products():
 
     all_products = query.all()
 
-    # Filter by status in Python (derived property)
-    if status and status != 'all':
+    # Filter by stock status in Python (derived property)
+    if status and status in ('in_stock', 'low_stock', 'out_of_stock'):
         all_products = [p for p in all_products if p.status == status]
 
     total = len(all_products)
@@ -93,6 +101,10 @@ def create_product():
     try:
         init_qty = float(data.get('current_quantity', 0))
         min_stock = float(data.get('minimum_stock', 0))
+        pkg_type = data.get('default_packaging_type', 'Bag')
+        pkg_size = float(data['default_package_size']) if data.get('default_package_size') not in (None, '') else None
+        pkg_unit = data.get('default_package_unit')
+        pkg_count = float(data.get('default_package_count', 1.0)) if data.get('default_package_count') not in (None, '') else 1.0
 
         product = Product(
             name=clean_name,
@@ -102,9 +114,26 @@ def create_product():
             minimum_stock=min_stock,
             description=(data.get('description') or '').strip() or None,
             is_active=True,
+            default_packaging_type=pkg_type,
+            default_package_size=pkg_size,
+            default_package_unit=pkg_unit,
+            default_package_count=pkg_count,
         )
         db.session.add(product)
         db.session.flush()
+
+        # If default package size specified, create corresponding ProductPackageStock
+        if pkg_size and pkg_size > 0:
+            c = pkg_count if pkg_count and pkg_count > 0 else 1.0
+            tot = round(c * pkg_size, 4)
+            db.session.add(ProductPackageStock(
+                product_id=product.id,
+                packaging_type=pkg_type or 'Bag',
+                package_size=pkg_size,
+                unit_symbol=pkg_unit or (product.unit.symbol if product.unit else 'kg'),
+                package_count=c,
+                total_quantity=tot,
+            ))
 
         # If opening quantity > 0, record ledger opening balance
         if product.current_quantity > 0:
@@ -241,6 +270,16 @@ def update_product(product_id):
             product.minimum_stock = float(data['minimum_stock'])
         if 'description' in data:
             product.description = (data['description'] or '').strip() or None
+        if 'is_active' in data:
+            product.is_active = bool(data['is_active'])
+        if 'default_packaging_type' in data:
+            product.default_packaging_type = data['default_packaging_type'] or 'Bag'
+        if 'default_package_size' in data:
+            product.default_package_size = float(data['default_package_size']) if data['default_package_size'] not in (None, '') else None
+        if 'default_package_unit' in data:
+            product.default_package_unit = data['default_package_unit']
+        if 'default_package_count' in data:
+            product.default_package_count = float(data['default_package_count']) if data['default_package_count'] not in (None, '') else 1.0
 
         _check_and_update_notifications(product)
 
@@ -262,6 +301,35 @@ def update_product(product_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Update failed: {str(e)}', 'error': str(e)}), 500
+
+
+@products_bp.route('/api/products/<int:product_id>/toggle-status', methods=['POST'])
+def toggle_product_status(product_id):
+    """Toggle product between Active and Inactive state."""
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    product = Product.query.get_or_404(product_id)
+    try:
+        product.is_active = not product.is_active
+        action_verb = 'Activated' if product.is_active else 'Deactivated'
+        db.session.add(ActivityLog(
+            user_id=session.get('user_id'),
+            action=f'{action_verb} product "{product.name}".',
+            entity_type='product',
+            entity_id=product.id,
+        ))
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': f'Product "{product.name}" is now {action_verb.lower()}.',
+            'is_active': product.is_active,
+            'product': product.to_dict(),
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Status update failed: {str(e)}', 'error': str(e)}), 500
 
 
 @products_bp.route('/api/products/<int:product_id>', methods=['DELETE'])
@@ -438,3 +506,162 @@ def delete_unit(unit_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Failed to delete unit: {str(e)}', 'error': str(e)}), 500
+
+
+# ── Package / Unit Master ─────────────────────────────────────────────────────
+
+@products_bp.route('/api/packaging-types', methods=['GET'])
+def list_packaging_types():
+    _require_auth()
+    types = ['Bag', 'Bottle', 'Pouch', 'Container', 'Drum', 'Loose']
+    return jsonify({
+        'success': True,
+        'packaging_types': types,
+        'data': types,
+    })
+
+
+@products_bp.route('/api/packages', methods=['GET'])
+def list_packages():
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    pkg_type = request.args.get('packaging_type', '').strip()
+    active_only = request.args.get('active_only', 'false').lower() == 'true'
+
+    query = PackageMaster.query
+    if active_only:
+        query = query.filter_by(is_active=True)
+    if pkg_type:
+        query = query.filter(db.func.lower(PackageMaster.packaging_type) == pkg_type.lower())
+
+    query = query.order_by(PackageMaster.packaging_type, PackageMaster.base_multiplier.asc())
+    packages = query.all()
+    pkg_list = [p.to_dict() for p in packages]
+
+    return jsonify({
+        'success': True,
+        'packages': pkg_list,
+        'data': pkg_list,
+        'total': len(pkg_list),
+    })
+
+
+@products_bp.route('/api/packages', methods=['POST'])
+def create_package():
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json() or {}
+    try:
+        size = float(data.get('package_size', 0))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'Package size must be a valid number.', 'error': 'Invalid size.'}), 400
+
+    unit_sym = (data.get('unit_symbol') or '').strip()
+    pkg_type = (data.get('packaging_type') or 'Bag').strip()
+
+    if size <= 0 and pkg_type.lower() != 'loose':
+        return jsonify({'success': False, 'message': 'Package size must be greater than zero.', 'error': 'Invalid size.'}), 400
+    if not unit_sym:
+        return jsonify({'success': False, 'message': 'Unit symbol is required (e.g. kg, g, L, ml).', 'error': 'Unit symbol is required.'}), 400
+
+    # Auto infer base unit
+    u_lower = unit_sym.lower()
+    base_u = data.get('base_unit') or ('L' if u_lower in ('l', 'ml', 'lt', 'liter', 'litre') else 'kg')
+    multiplier = PackageMaster.compute_multiplier(size, unit_sym)
+
+    # Check duplicate
+    existing = PackageMaster.query.filter(
+        PackageMaster.package_size == size,
+        db.func.lower(PackageMaster.unit_symbol) == unit_sym.lower(),
+        db.func.lower(PackageMaster.packaging_type) == pkg_type.lower(),
+    ).first()
+    if existing:
+        msg = f'Package size "{size:g} {unit_sym} {pkg_type}" already exists in Package Master.'
+        return jsonify({'success': False, 'message': msg, 'error': msg, 'existing_id': existing.id}), 409
+
+    try:
+        pkg = PackageMaster(
+            package_size=size,
+            unit_symbol=unit_sym,
+            packaging_type=pkg_type,
+            base_unit=base_u,
+            base_multiplier=multiplier,
+            is_active=True,
+        )
+        db.session.add(pkg)
+        db.session.commit()
+
+        db.session.add(ActivityLog(
+            user_id=session.get('user_id'),
+            action=f'Added package size "{pkg.label}" to Package Master.',
+            entity_type='package_master',
+            entity_id=pkg.id,
+        ))
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f'Package size "{pkg.label}" created successfully.',
+            'package': pkg.to_dict(),
+            'data': pkg.to_dict(),
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Failed to create package: {str(e)}', 'error': str(e)}), 500
+
+
+@products_bp.route('/api/packages/<int:pkg_id>', methods=['PUT'])
+def update_package(pkg_id):
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    pkg = PackageMaster.query.get_or_404(pkg_id)
+    data = request.get_json() or {}
+
+    try:
+        if 'package_size' in data:
+            pkg.package_size = float(data['package_size'])
+        if 'unit_symbol' in data and data['unit_symbol'].strip():
+            pkg.unit_symbol = data['unit_symbol'].strip()
+        if 'packaging_type' in data and data['packaging_type'].strip():
+            pkg.packaging_type = data['packaging_type'].strip()
+        if 'is_active' in data:
+            pkg.is_active = bool(data['is_active'])
+
+        pkg.base_multiplier = PackageMaster.compute_multiplier(pkg.package_size, pkg.unit_symbol)
+        u_lower = pkg.unit_symbol.lower()
+        pkg.base_unit = 'L' if u_lower in ('l', 'ml', 'lt', 'liter', 'litre') else 'kg'
+
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': f'Package size "{pkg.label}" updated successfully.',
+            'package': pkg.to_dict(),
+            'data': pkg.to_dict(),
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Update failed: {str(e)}', 'error': str(e)}), 500
+
+
+@products_bp.route('/api/packages/<int:pkg_id>', methods=['DELETE'])
+def delete_package(pkg_id):
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    pkg = PackageMaster.query.get_or_404(pkg_id)
+    try:
+        db.session.delete(pkg)
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'Package "{pkg.label}" removed from Package Master.'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Delete failed: {str(e)}', 'error': str(e)}), 500
+

@@ -101,9 +101,11 @@ def create_purchase():
         bill_file.save(save_path)
         bill_filename = filename
 
+    qty_val = float(data['quantity']) if (data.get('quantity') is not None and str(data.get('quantity')).strip() != '') else None
+
     purchase, error = record_purchase(
         product_id=int(data['product_id']),
-        quantity=float(data['quantity']),
+        quantity=qty_val,
         unit_id=int(data.get('unit_id') or 0) or None,
         unit_price=float(data['unit_price']) if data.get('unit_price') else None,
         total_price=float(data['total_price']) if data.get('total_price') else None,
@@ -112,6 +114,10 @@ def create_purchase():
         invoice_number=data.get('invoice_number'),
         remarks=data.get('remarks'),
         bill_file=bill_filename,
+        packaging_type=data.get('packaging_type'),
+        package_size=float(data['package_size']) if data.get('package_size') else None,
+        package_unit=data.get('package_unit'),
+        package_count=float(data['package_count']) if data.get('package_count') else None,
     )
 
     if error:
@@ -119,10 +125,12 @@ def create_purchase():
 
     try:
         product = Product.query.get(purchase.product_id)
+        unit_label = product.unit.symbol if product and product.unit else ""
+        summary_str = purchase.package_summary or f"{purchase.quantity} {unit_label}"
         db.session.add(ActivityLog(
             user_id=session.get('user_id'),
             action=(
-                f'Purchased {purchase.quantity} {product.unit.symbol if product and product.unit else ""} '
+                f'Purchased {summary_str} of '
                 f'{product.name if product else ""} for ₹{purchase.total_price or 0:,.2f}.'
             ),
             entity_type='purchase',
@@ -134,7 +142,7 @@ def create_purchase():
 
     return jsonify({
         'success': True,
-        'message': f'Purchase of {purchase.quantity} {product.unit.symbol if product and product.unit else ""} {product.name if product else ""} recorded successfully.',
+        'message': f'Purchase of {purchase.package_summary or f"{purchase.quantity} {unit_label}"} {product.name if product else ""} recorded successfully.',
         'purchase': purchase.to_dict(),
         'data': purchase.to_dict(),
     }), 201

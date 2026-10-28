@@ -26,6 +26,7 @@ const SettingsView = {
 
       <!-- Settings Navigation Tabs -->
       <div class="settings-tabs-bar">
+        <button class="btn ${this.tab === 'packages' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="packages">📦 Package / Unit Master</button>
         <button class="btn ${this.tab === 'suppliers' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="suppliers">🏢 Suppliers</button>
         <button class="btn ${this.tab === 'categories' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="categories">🏷️ Categories</button>
         <button class="btn ${this.tab === 'units' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="units">⚖️ Units of Measure</button>
@@ -58,6 +59,9 @@ const SettingsView = {
     if (!content) return;
 
     switch (this.tab) {
+      case 'packages':
+        await this.renderPackagesTab(content);
+        break;
       case 'suppliers':
         await this.renderSuppliersTab(content);
         break;
@@ -76,6 +80,169 @@ const SettingsView = {
       case 'security':
         this.renderSecurityTab(content);
         break;
+    }
+  },
+
+  // ── Tab: Package / Unit Master (Section 10) ─────────────────────────────────
+  async renderPackagesTab(container) {
+    container.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+    try {
+      const res = await fetch('/api/packages');
+      const data = await res.json();
+      const packages = data.packages || data.data || [];
+      App.state.packages = packages;
+
+      const packagingTypes = ['All', 'Bag', 'Bottle', 'Pouch', 'Container', 'Drum', 'Loose'];
+
+      container.innerHTML = `
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.25rem; flex-wrap:wrap; gap:1rem;">
+            <div>
+              <h3 class="card-title" style="margin-bottom:0.25rem;">📦 Package / Unit Master</h3>
+              <p style="color:var(--text-muted); font-size:0.875rem; margin:0;">
+                Reusable package sizes & units across all products. Products and package sizes are strictly decoupled.
+              </p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btnAddPackage"><span>+</span> Add Package Size</button>
+          </div>
+
+          <!-- Filter Toolbar -->
+          <div style="display:flex; gap:0.75rem; align-items:center; margin-bottom:1rem; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <label style="font-size:0.85rem; font-weight:600; color:var(--text-muted);">Packaging Type:</label>
+              <select id="filterPackagingType" class="form-control" style="width:auto; padding:0.35rem 0.75rem; font-size:0.85rem;">
+                ${packagingTypes.map(pt => `<option value="${pt}">${pt === 'All' ? 'All Types' : pt}</option>`).join('')}
+              </select>
+            </div>
+            <div style="flex:1; min-width:200px;">
+              <input type="text" id="searchPackageInput" class="form-control" placeholder="Search size, unit or type..." style="padding:0.35rem 0.75rem; font-size:0.85rem;" />
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table id="packageMasterTable">
+              <thead>
+                <tr>
+                  <th>Package Size</th>
+                  <th>Unit</th>
+                  <th>Packaging Type</th>
+                  <th>Display Label</th>
+                  <th>Base Equivalent</th>
+                  <th>Status</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="packageMasterTbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      const tbody = document.getElementById('packageMasterTbody');
+      const filterType = document.getElementById('filterPackagingType');
+      const searchInput = document.getElementById('searchPackageInput');
+
+      const renderRows = () => {
+        const typeVal = filterType.value;
+        const searchVal = searchInput.value.trim().toLowerCase();
+
+        const filtered = packages.filter(p => {
+          if (typeVal !== 'All' && p.packaging_type !== typeVal) return false;
+          if (searchVal) {
+            const str = `${p.package_size} ${p.unit_symbol} ${p.packaging_type} ${p.label}`.toLowerCase();
+            if (!str.includes(searchVal)) return false;
+          }
+          return true;
+        });
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--text-muted);">No package sizes match the selected criteria.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = filtered.map(p => {
+          const isLoose = p.packaging_type === 'Loose';
+          const sizeDisplay = isLoose ? '1' : `${p.package_size}`;
+          const baseEq = p.base_multiplier === 1 ? `${p.package_size} ${p.base_unit}` : `${p.base_multiplier} ${p.base_unit}`;
+          return `
+            <tr>
+              <td><strong>${sizeDisplay}</strong></td>
+              <td><span class="badge badge-muted">${p.unit_symbol}</span></td>
+              <td><span class="badge ${isLoose ? 'badge-yellow' : 'badge-green'}">${p.packaging_type}</span></td>
+              <td><strong>${p.label}</strong></td>
+              <td style="color:var(--text-muted); font-size:0.875rem;">${baseEq}</td>
+              <td>
+                <span class="badge ${p.is_active ? 'badge-green' : 'badge-danger'}">
+                  ${p.is_active ? 'Active' : 'Inactive'}
+                </span>
+              </td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm btn-edit-package" data-id="${p.id}" title="Edit Package Size">✏️ Edit</button>
+                <button class="btn btn-danger btn-sm btn-del-package" data-id="${p.id}" data-label="${p.label}" title="Delete Package Size">🗑️</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        // Bind Edit buttons
+        tbody.querySelectorAll('.btn-edit-package').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const pId = parseInt(btn.dataset.id, 10);
+            const targetPkg = packages.find(x => x.id === pId);
+            if (!targetPkg) return;
+
+            document.getElementById('modalPackageTitle').textContent = 'Edit Package Size / Unit';
+            document.getElementById('packageEditId').value = targetPkg.id;
+            document.getElementById('pkgPackagingType').value = targetPkg.packaging_type;
+            document.getElementById('pkgSize').value = targetPkg.package_size;
+            document.getElementById('pkgUnit').value = targetPkg.unit_symbol;
+            document.getElementById('pkgStatus').value = targetPkg.is_active ? 'true' : 'false';
+
+            App.openModal('modalPackage');
+          });
+        });
+
+        // Bind Delete buttons
+        tbody.querySelectorAll('.btn-del-package').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const pId = btn.dataset.id;
+            const pLabel = btn.dataset.label;
+            if (confirm(`Remove package size "${pLabel}" from Package Master?`)) {
+              try {
+                const r = await fetch(`/api/packages/${pId}`, { method: 'DELETE' });
+                const d = await r.json();
+                if (r.ok && d.success) {
+                  App.showToast(`Package size "${pLabel}" removed.`);
+                  await App.loadMetadata();
+                  this.renderPackagesTab(container);
+                } else {
+                  App.showToast(d.message || 'Cannot delete package size', 'error');
+                }
+              } catch (err) {
+                App.showToast('Network error deleting package size', 'error');
+              }
+            }
+          });
+        });
+      };
+
+      renderRows();
+
+      filterType.addEventListener('change', renderRows);
+      searchInput.addEventListener('input', renderRows);
+
+      document.getElementById('btnAddPackage')?.addEventListener('click', () => {
+        document.getElementById('formPackage').reset();
+        document.getElementById('modalPackageTitle').textContent = 'Add Package Size / Unit';
+        document.getElementById('packageEditId').value = '';
+        document.getElementById('pkgStatus').value = 'true';
+        App.openModal('modalPackage');
+      });
+
+    } catch (err) {
+      container.innerHTML = `<div class="alert alert-error">Error loading Package Master: ${err.message}</div>`;
     }
   },
 

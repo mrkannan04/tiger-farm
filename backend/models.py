@@ -137,6 +137,98 @@ class Supplier(db.Model):
         }
 
 
+class PackageMaster(db.Model):
+    """Package / Unit Master containing reusable package sizes, units, and packaging types."""
+    __tablename__ = 'package_master'
+
+    id = db.Column(db.Integer, primary_key=True)
+    package_size = db.Column(db.Float, nullable=False)
+    unit_symbol = db.Column(db.String(20), nullable=False)  # kg, g, L, ml, etc.
+    packaging_type = db.Column(db.String(50), nullable=False)  # Bag, Bottle, Pouch, Container, Drum, Loose
+    base_unit = db.Column(db.String(20), nullable=False, default='kg')  # kg or L
+    base_multiplier = db.Column(db.Float, nullable=False, default=1.0)  # Multiplier to base unit
+    is_active = db.Column(db.Boolean, default=True, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if not self.base_multiplier or self.base_multiplier <= 0:
+            self.base_multiplier = self.compute_multiplier(self.package_size, self.unit_symbol)
+
+    @staticmethod
+    def compute_multiplier(size, unit):
+        u = (unit or '').lower().strip()
+        s = float(size)
+        if u in ('g', 'gm', 'gram', 'grams'):
+            return round(s / 1000.0, 6)
+        elif u in ('kg', 'kgs', 'kilogram'):
+            return round(s, 6)
+        elif u in ('ml', 'milliliter', 'millilitre'):
+            return round(s / 1000.0, 6)
+        elif u in ('l', 'lt', 'liter', 'litre', 'liters'):
+            return round(s, 6)
+        elif u in ('ton', 'tonne'):
+            return round(s * 1000.0, 6)
+        return round(s, 6)
+
+    @property
+    def label(self):
+        size_str = f"{self.package_size:g}"
+        if (self.packaging_type or '').lower() == 'loose':
+            return f"Loose ({self.unit_symbol})"
+        return f"{size_str} {self.unit_symbol} {self.packaging_type}"
+
+    def to_dict(self):
+        size_str = f"{self.package_size:g}"
+        return {
+            'id': self.id,
+            'package_size': self.package_size,
+            'size_display': size_str,
+            'unit_symbol': self.unit_symbol,
+            'packaging_type': self.packaging_type,
+            'base_unit': self.base_unit,
+            'base_multiplier': self.base_multiplier,
+            'label': self.label,
+            'is_active': self.is_active,
+            'created_at': self.created_at.strftime('%d %b %Y') if self.created_at else None,
+        }
+
+
+class ProductPackageStock(db.Model):
+    """Product stock broken down by packaging type and package size."""
+    __tablename__ = 'product_package_stocks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id', ondelete='CASCADE'), nullable=False, index=True)
+    packaging_type = db.Column(db.String(50), nullable=False)   # Bag, Bottle, Loose, etc.
+    package_size = db.Column(db.Float, nullable=False, default=1.0)
+    unit_symbol = db.Column(db.String(20), nullable=False, default='kg')
+    package_count = db.Column(db.Float, nullable=False, default=0.0)  # e.g. 5 bags
+    total_quantity = db.Column(db.Float, nullable=False, default=0.0) # e.g. 250 kg in base unit
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        size_str = f"{self.package_size:g}"
+        count_str = f"{self.package_count:g}"
+        tot_str = f"{round(self.total_quantity, 4):g}"
+        if (self.packaging_type or '').lower() == 'loose':
+            desc = f"{count_str} {self.unit_symbol} Loose"
+        else:
+            noun = f"{self.packaging_type}s" if self.package_count != 1 else self.packaging_type
+            desc = f"{count_str} {noun} × {size_str} {self.unit_symbol} = {tot_str} {self.unit_symbol}"
+        return {
+            'id': self.id,
+            'product_id': self.product_id,
+            'packaging_type': self.packaging_type,
+            'package_size': self.package_size,
+            'size_display': size_str,
+            'unit_symbol': self.unit_symbol,
+            'package_count': round(self.package_count, 4),
+            'total_quantity': round(self.total_quantity, 4),
+            'description': desc,
+        }
+
+
 class Product(db.Model):
     """Farm product / inventory item."""
     __tablename__ = 'products'
@@ -149,12 +241,20 @@ class Product(db.Model):
     minimum_stock = db.Column(db.Float, default=0.0)
     description = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, default=True, index=True)
+    default_packaging_type = db.Column(db.String(50), nullable=True, default='Bag')
+    default_package_size = db.Column(db.Float, nullable=True)
+    default_package_unit = db.Column(db.String(20), nullable=True, default='kg')
+    default_package_count = db.Column(db.Float, nullable=True, default=1.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
     unit = db.relationship('Unit', backref='products')
+    package_stocks = db.relationship(
+        'ProductPackageStock', backref='product', lazy=True, cascade='all, delete-orphan',
+        order_by='desc(ProductPackageStock.package_size)'
+    )
     purchases = db.relationship('Purchase', backref='product', lazy=True, order_by='desc(Purchase.purchase_date)')
     usages = db.relationship('Usage', backref='product', lazy=True, order_by='desc(Usage.usage_date)')
     stock_movements = db.relationship(
@@ -206,6 +306,14 @@ class Product(db.Model):
             return self.usages[0].usage_date.strftime('%d %b %Y')
         return None
 
+    def get_package_breakdown(self):
+        """Return non-zero package stock records for this product."""
+        items = []
+        for ps in self.package_stocks:
+            if ps.package_count > 0 or ps.total_quantity > 0:
+                items.append(ps.to_dict())
+        return items
+
     def to_dict(self, include_stats=False):
         data = {
             'id': self.id,
@@ -219,7 +327,13 @@ class Product(db.Model):
             'minimum_stock': self.minimum_stock,
             'status': self.status,
             'description': self.description,
-            'is_active': self.is_active,
+            'is_active': bool(self.is_active),
+            'default_packaging_type': self.default_packaging_type or 'Bag',
+            'default_package_size': self.default_package_size,
+            'default_package_unit': self.default_package_unit or (self.unit.symbol if self.unit else 'kg'),
+            'default_package_count': self.default_package_count or 1.0,
+            'default_bag_summary': f"{self.default_package_size:g} {self.default_package_unit or (self.unit.symbol if self.unit else 'kg')} {self.default_packaging_type or 'Bag'}" if self.default_package_size else None,
+            'package_breakdown': self.get_package_breakdown(),
             'created_at': self.created_at.strftime('%d %b %Y') if self.created_at else None,
             'updated_at': self.updated_at.strftime('%d %b %Y') if self.updated_at else None,
         }
@@ -242,13 +356,18 @@ class Purchase(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, index=True)
-    quantity = db.Column(db.Float, nullable=False)
+    quantity = db.Column(db.Float, nullable=False)  # Total in product base unit
     unit_id = db.Column(db.Integer, db.ForeignKey('units.id'), nullable=False)
+    packaging_type = db.Column(db.String(50), nullable=True)  # Bag, Bottle, Loose, etc.
+    package_size = db.Column(db.Float, nullable=True)         # 50, 25, 1, 2, etc.
+    package_unit = db.Column(db.String(20), nullable=True)    # kg, g, L, ml
+    package_count = db.Column(db.Float, nullable=True)        # 5 (Bags), 10 (Bottles)
+    package_summary = db.Column(db.String(200), nullable=True) # "5 Bags × 50 kg = 250 kg"
     unit_price = db.Column(db.Float, nullable=True)
     total_price = db.Column(db.Float, nullable=True)
     purchase_date = db.Column(db.Date, nullable=False, index=True)
     supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True)
-    supplier_name = db.Column(db.String(150), nullable=True)  # free-text fallback
+    supplier_name = db.Column(db.String(150), nullable=True)
     invoice_number = db.Column(db.String(100), nullable=True)
     remarks = db.Column(db.Text, nullable=True)
     bill_file = db.Column(db.String(250), nullable=True)
@@ -270,6 +389,11 @@ class Purchase(db.Model):
             'product_name': self.product.name if self.product else None,
             'quantity': self.quantity,
             'unit': self.unit.symbol if self.unit else None,
+            'packaging_type': self.packaging_type or 'Standard',
+            'package_size': self.package_size,
+            'package_unit': self.package_unit or (self.unit.symbol if self.unit else None),
+            'package_count': self.package_count,
+            'package_summary': self.package_summary,
             'unit_price': self.unit_price,
             'total_price': self.total_price,
             'purchase_date': self.purchase_date.strftime('%d %b %Y') if self.purchase_date else None,
@@ -292,6 +416,11 @@ class Usage(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False, index=True)
     quantity = db.Column(db.Float, nullable=False)
     unit_id = db.Column(db.Integer, db.ForeignKey('units.id'), nullable=False)
+    packaging_type = db.Column(db.String(50), nullable=True)  # Bag, Bottle, Loose, etc.
+    package_size = db.Column(db.Float, nullable=True)         # 50, 25, 1, 2, etc.
+    package_unit = db.Column(db.String(20), nullable=True)    # kg, g, L, ml
+    package_count = db.Column(db.Float, nullable=True)        # 2 (Bags), 5 (Bottles)
+    package_summary = db.Column(db.String(200), nullable=True) # "2 Bags × 50 kg = 100 kg"
     usage_date = db.Column(db.Date, nullable=False, index=True)
     field_location = db.Column(db.String(150), nullable=True)
     reason = db.Column(db.String(250), nullable=True)
@@ -310,6 +439,11 @@ class Usage(db.Model):
             'product_name': self.product.name if self.product else None,
             'quantity': self.quantity,
             'unit': self.unit.symbol if self.unit else None,
+            'packaging_type': self.packaging_type or 'Standard',
+            'package_size': self.package_size,
+            'package_unit': self.package_unit or (self.unit.symbol if self.unit else None),
+            'package_count': self.package_count,
+            'package_summary': self.package_summary,
             'usage_date': self.usage_date.strftime('%d %b %Y') if self.usage_date else None,
             'usage_date_iso': self.usage_date.isoformat() if self.usage_date else None,
             'field_location': self.field_location,
@@ -329,6 +463,8 @@ class StockMovement(db.Model):
     quantity = db.Column(db.Float, nullable=False)           # positive or negative
     balance_after = db.Column(db.Float, nullable=False)
     reference_id = db.Column(db.Integer, nullable=True)      # purchase.id or usage.id
+    packaging_type = db.Column(db.String(50), nullable=True)
+    package_summary = db.Column(db.String(200), nullable=True)
     movement_date = db.Column(db.Date, nullable=False, index=True)
     remarks = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -343,6 +479,8 @@ class StockMovement(db.Model):
             'movement_type': (self.movement_type or '').upper(),
             'quantity': self.quantity,
             'balance_after': self.balance_after,
+            'packaging_type': self.packaging_type,
+            'package_summary': self.package_summary,
             'movement_date': self.movement_date.strftime('%d %b %Y') if self.movement_date else None,
             'remarks': self.remarks,
             'created_at': self.created_at.strftime('%d %b %Y, %I:%M %p') if self.created_at else None,

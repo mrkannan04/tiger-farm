@@ -80,14 +80,20 @@ def create_usage():
         err_msg = ', '.join(errors.values())
         return jsonify({'success': False, 'message': err_msg, 'error': err_msg, 'errors': errors}), 400
 
+    qty_val = float(data['quantity']) if (data.get('quantity') is not None and str(data.get('quantity')).strip() != '') else None
+
     usage, error = record_usage(
         product_id=int(data['product_id']),
-        quantity=float(data['quantity']),
+        quantity=qty_val,
         unit_id=int(data.get('unit_id') or 0) or None,
         usage_date=parse_date(data.get('usage_date')),
         field_location=data.get('field_location'),
         reason=data.get('reason'),
         remarks=data.get('remarks'),
+        packaging_type=data.get('packaging_type'),
+        package_size=float(data['package_size']) if data.get('package_size') else None,
+        package_unit=data.get('package_unit'),
+        package_count=float(data['package_count']) if data.get('package_count') else None,
     )
 
     if error:
@@ -96,10 +102,11 @@ def create_usage():
     try:
         product = Product.query.get(usage.product_id)
         unit_sym = product.unit.symbol if product and product.unit else ""
+        summary_str = usage.package_summary or f"{usage.quantity} {unit_sym}"
         db.session.add(ActivityLog(
             user_id=session.get('user_id'),
             action=(
-                f'Used {usage.quantity} {unit_sym} {product.name if product else ""}. '
+                f'Used {summary_str} of {product.name if product else ""}. '
                 f'Field: {usage.field_location or "General"}. Remaining stock: {product.current_quantity} {unit_sym}.'
             ),
             entity_type='usage',
@@ -112,7 +119,7 @@ def create_usage():
     return jsonify({
         'success': True,
         'message': (
-            f'Recorded usage of {usage.quantity} {unit_sym} {product.name if product else ""}. '
+            f'Recorded usage of {usage.package_summary or f"{usage.quantity} {unit_sym}"} {product.name if product else ""}. '
             f'Remaining stock: {product.current_quantity} {unit_sym}.'
         ),
         'usage': usage.to_dict(),

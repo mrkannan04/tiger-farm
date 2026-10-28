@@ -129,7 +129,14 @@ const PurchasesView = {
                   <strong style="color:var(--text);">${p.product_name}</strong>
                   ${p.remarks ? `<div style="font-size:0.75rem; color:var(--muted);">${p.remarks}</div>` : ''}
                 </td>
-                <td><strong>${p.quantity}</strong> <span style="font-size:0.8rem; color:var(--muted);">${p.unit || ''}</span></td>
+                <td>
+                  ${p.package_summary ? `
+                    <div><strong style="color:var(--green-dark); font-size:0.85rem;">${p.package_summary}</strong></div>
+                    <div style="font-size:0.75rem; color:var(--muted); font-weight:500;">(${p.quantity} ${p.unit || ''})</div>
+                  ` : `
+                    <strong>${p.quantity}</strong> <span style="font-size:0.8rem; color:var(--muted);">${p.unit || ''}</span>
+                  `}
+                </td>
                 <td>₹${(p.unit_price || 0).toLocaleString('en-IN')}</td>
                 <td><strong style="color:var(--green-dark);">₹${(p.total_price || 0).toLocaleString('en-IN')}</strong></td>
                 <td>${p.supplier_name || '<span style="color:var(--muted);">—</span>'}</td>

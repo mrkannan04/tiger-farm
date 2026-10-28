@@ -12,6 +12,8 @@ const App = {
     products: [],
     suppliers: [],
     fields: [],
+    packages: [],
+    packagingTypes: ['Bag', 'Bottle', 'Pouch', 'Container', 'Drum', 'Loose'],
     unreadCount: 0,
   },
 
@@ -70,12 +72,14 @@ const App = {
 
   async loadMetadata() {
     try {
-      const [catsRes, unitsRes, prodsRes, suppRes, fldRes] = await Promise.all([
+      const [catsRes, unitsRes, prodsRes, suppRes, fldRes, pkgsRes, typesRes] = await Promise.all([
         fetch('/api/categories').then(r => r.json()).catch(() => ({ categories: [] })),
         fetch('/api/units').then(r => r.json()).catch(() => ({ units: [] })),
-        fetch('/api/products?per_page=1000').then(r => r.json()).catch(() => ({ products: [] })),
+        fetch('/api/products?per_page=1000&status=all').then(r => r.json()).catch(() => ({ products: [] })),
         fetch('/api/suppliers').then(r => r.json()).catch(() => []),
         fetch('/api/fields').then(r => r.json()).catch(() => []),
+        fetch('/api/packages').then(r => r.json()).catch(() => ({ packages: [] })),
+        fetch('/api/packaging-types').then(r => r.json()).catch(() => ({ packaging_types: ['Bag', 'Bottle', 'Pouch', 'Container', 'Drum', 'Loose'] })),
       ]);
 
       this.state.categories = catsRes.categories || (Array.isArray(catsRes) ? catsRes : []);
@@ -83,8 +87,11 @@ const App = {
       this.state.products = prodsRes.products || (Array.isArray(prodsRes) ? prodsRes : []);
       this.state.suppliers = Array.isArray(suppRes) ? suppRes : (suppRes.suppliers || suppRes.data || []);
       this.state.fields = Array.isArray(fldRes) ? fldRes : (fldRes.fields || fldRes.data || []);
+      this.state.packages = pkgsRes.packages || pkgsRes.data || [];
+      if (typesRes.packaging_types) this.state.packagingTypes = typesRes.packaging_types;
 
       this.populateDropdowns();
+      this.setupPackagingCalculators();
     } catch (e) {
       console.error('Error loading metadata from database:', e);
     }
@@ -350,10 +357,13 @@ const App = {
     const btnQP = document.getElementById('btnQuickPurchase');
     if (btnQP) {
       btnQP.addEventListener('click', () => {
-        document.getElementById('formPurchase').reset();
+        const form = document.getElementById('formPurchase');
+        form.reset();
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('purchaseDate').value = today;
+        document.getElementById('purchaseCalcResult').textContent = '0 kg';
         this.openModal('modalPurchase');
+        this.syncPurchasePackagingUI();
       });
     }
 
@@ -361,65 +371,18 @@ const App = {
     const btnQU = document.getElementById('btnQuickUsage');
     if (btnQU) {
       btnQU.addEventListener('click', () => {
-        document.getElementById('formUsage').reset();
+        const form = document.getElementById('formUsage');
+        form.reset();
         document.getElementById('usageStockHint').textContent = '';
+        document.getElementById('usageCalcResult').textContent = '0 kg';
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('usageDate').value = today;
         this.openModal('modalUsage');
+        this.syncUsagePackagingUI();
       });
     }
 
-    // Purchase product select auto-sets unit
-    const pProd = document.getElementById('purchaseProduct');
-    if (pProd) {
-      pProd.addEventListener('change', () => {
-        const opt = pProd.options[pProd.selectedIndex];
-        if (opt && opt.dataset.unit) {
-          document.getElementById('purchaseUnit').value = opt.dataset.unit;
-        }
-      });
-    }
-
-    // Auto price calculation for purchase
-    const pQty = document.getElementById('purchaseQty');
-    const pUnitPrice = document.getElementById('purchaseUnitPrice');
-    const pTotalPrice = document.getElementById('purchaseTotalPrice');
-
-    const calcPrice = () => {
-      const q = parseFloat(pQty.value);
-      const u = parseFloat(pUnitPrice.value);
-      if (q > 0 && u > 0 && document.activeElement === pUnitPrice) {
-        pTotalPrice.value = (q * u).toFixed(2);
-      }
-    };
-    if (pQty && pUnitPrice) {
-      pUnitPrice.addEventListener('input', calcPrice);
-      pQty.addEventListener('input', calcPrice);
-      pTotalPrice.addEventListener('input', () => {
-        const q = parseFloat(pQty.value);
-        const t = parseFloat(pTotalPrice.value);
-        if (q > 0 && t > 0 && document.activeElement === pTotalPrice) {
-          pUnitPrice.value = (t / q).toFixed(2);
-        }
-      });
-    }
-
-    // Usage product select shows current stock & sets unit
-    const uProd = document.getElementById('usageProduct');
-    if (uProd) {
-      uProd.addEventListener('change', () => {
-        const opt = uProd.options[uProd.selectedIndex];
-        const hint = document.getElementById('usageStockHint');
-        if (opt && opt.value) {
-          hint.textContent = `Current Database Stock: ${opt.dataset.stock} ${opt.dataset.symbol}`;
-          if (opt.dataset.unit) document.getElementById('usageUnit').value = opt.dataset.unit;
-        } else {
-          hint.textContent = '';
-        }
-      });
-    }
-
-    // Quick Purchase form submit — Strict database confirmation (Section 15)
+    // Quick Purchase form submit — Strict database confirmation
     const fPurchase = document.getElementById('formPurchase');
     if (fPurchase) {
       fPurchase.addEventListener('submit', async (e) => {
@@ -455,7 +418,7 @@ const App = {
       });
     }
 
-    // Quick Usage form submit — Strict database confirmation (Section 11, 12, 15)
+    // Quick Usage form submit — Strict database confirmation
     const fUsage = document.getElementById('formUsage');
     if (fUsage) {
       fUsage.addEventListener('submit', async (e) => {
@@ -466,6 +429,10 @@ const App = {
 
         const payload = {
           product_id: document.getElementById('usageProduct').value,
+          packaging_type: document.getElementById('usagePkgType').value,
+          package_size: document.getElementById('usagePkgSize').value,
+          package_unit: document.getElementById('usagePkgUnit').value,
+          package_count: document.getElementById('usagePkgCount').value,
           quantity: document.getElementById('usageQty').value,
           unit_id: document.getElementById('usageUnit').value,
           usage_date: document.getElementById('usageDate').value,
@@ -501,6 +468,50 @@ const App = {
       });
     }
 
+    // Package Master modal form submit
+    const fPkg = document.getElementById('formPackage');
+    if (fPkg) {
+      fPkg.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('btnSubmitPackage');
+        btn.disabled = true;
+        btn.textContent = 'Saving Package Size...';
+
+        const editId = document.getElementById('packageEditId').value;
+        const payload = {
+          package_size: parseFloat(document.getElementById('pkgSize').value) || 0,
+          unit_symbol: document.getElementById('pkgUnit').value,
+          packaging_type: document.getElementById('pkgPackagingType').value,
+          is_active: document.getElementById('pkgStatus').value === 'true',
+        };
+
+        const url = editId ? `/api/packages/${editId}` : '/api/packages';
+        const method = editId ? 'PUT' : 'POST';
+
+        try {
+          const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (res.ok && data.success !== false) {
+            this.showToast(data.message || 'Package size saved to Package Master!');
+            this.closeModal('modalPackage');
+            await this.loadMetadata();
+            if (this.views.settings?.refresh) this.views.settings.refresh();
+          } else {
+            this.showToast(data.message || 'Failed to save package size.', 'error');
+          }
+        } catch (err) {
+          this.showToast('Error: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Save Package Size';
+        }
+      });
+    }
+
     // Global Search
     const searchInput = document.getElementById('globalSearchInput');
     if (searchInput) {
@@ -514,7 +525,338 @@ const App = {
       });
     }
   },
+
+  // ── Packaging & Stock Calculation Logic (Sections 1 to 11) ─────────────────
+  setupPackagingCalculators() {
+    // 1. Purchase packaging setup
+    const pProd = document.getElementById('purchaseProduct');
+    const pPkgType = document.getElementById('purchasePkgType');
+    const pPkgSize = document.getElementById('purchasePkgSize');
+    const pPkgCount = document.getElementById('purchasePkgCount');
+    const pUnitPrice = document.getElementById('purchaseUnitPrice');
+    const pTotalPrice = document.getElementById('purchaseTotalPrice');
+
+    pProd?.addEventListener('change', () => this.syncPurchasePackagingUI());
+    pPkgType?.addEventListener('change', () => this.syncPurchasePackagingUI());
+    pPkgSize?.addEventListener('change', () => this.recalcPurchaseTotal());
+    pPkgCount?.addEventListener('input', () => this.recalcPurchaseTotal());
+
+    if (pPkgCount && pUnitPrice) {
+      pUnitPrice.addEventListener('input', () => {
+        const count = parseFloat(pPkgCount.value) || 0;
+        const rate = parseFloat(pUnitPrice.value) || 0;
+        if (count > 0 && rate > 0) {
+          pTotalPrice.value = (count * rate).toFixed(2);
+        }
+      });
+
+      pTotalPrice?.addEventListener('input', () => {
+        const count = parseFloat(pPkgCount.value) || 0;
+        const total = parseFloat(pTotalPrice.value) || 0;
+        if (count > 0 && total > 0) {
+          pUnitPrice.value = (total / count).toFixed(2);
+        }
+      });
+    }
+
+    // 2. Usage packaging setup
+    const uProd = document.getElementById('usageProduct');
+    const uPkgType = document.getElementById('usagePkgType');
+    const uPkgSize = document.getElementById('usagePkgSize');
+    const uPkgCount = document.getElementById('usagePkgCount');
+
+    uProd?.addEventListener('change', () => this.syncUsagePackagingUI());
+    uPkgType?.addEventListener('change', () => this.syncUsagePackagingSizes());
+    uPkgSize?.addEventListener('change', () => this.recalcUsageTotal());
+    uPkgCount?.addEventListener('input', () => this.recalcUsageTotal());
+
+    // 3. Package Master modal live preview setup
+    const pkgTypeIn = document.getElementById('pkgPackagingType');
+    const pkgSizeIn = document.getElementById('pkgSize');
+    const pkgUnitIn = document.getElementById('pkgUnit');
+    const pkgPreview = document.getElementById('pkgPreviewText');
+
+    const updatePkgPreview = () => {
+      if (!pkgPreview) return;
+      const type = pkgTypeIn?.value || 'Bag';
+      const size = pkgSizeIn?.value || '50';
+      const unit = pkgUnitIn?.value || 'kg';
+      if (type.toLowerCase() === 'loose') {
+        pkgPreview.textContent = `Loose (${unit.toUpperCase()})`;
+      } else {
+        pkgPreview.textContent = `${size} ${unit} ${type}`;
+      }
+    };
+    [pkgTypeIn, pkgSizeIn, pkgUnitIn].forEach(el => el?.addEventListener('input', updatePkgPreview));
+    [pkgTypeIn, pkgSizeIn, pkgUnitIn].forEach(el => el?.addEventListener('change', updatePkgPreview));
+  },
+
+  syncPurchasePackagingUI() {
+    const pProd = document.getElementById('purchaseProduct');
+    const pPkgType = document.getElementById('purchasePkgType');
+    const pPkgSize = document.getElementById('purchasePkgSize');
+    const pPkgSizeGroup = document.getElementById('purchasePkgSizeGroup');
+    const pCountLabel = document.getElementById('purchasePkgCountLabel');
+    const pPriceLabel = document.getElementById('purchasePriceLabel');
+    const pUnitHidden = document.getElementById('purchaseUnit');
+    const pPkgUnitHidden = document.getElementById('purchasePkgUnit');
+
+    if (!pProd || !pPkgType || !pPkgSize) return;
+
+    const prodId = pProd.value;
+    const prod = this.state.products.find(p => p.id == prodId);
+    const baseUnit = (prod && prod.unit) ? prod.unit.toLowerCase() : 'kg';
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || (prod && prod.name.toLowerCase().includes('liquid')));
+
+    if (pUnitHidden && prod) pUnitHidden.value = prod.unit_id || '';
+
+    // If user just picked product and hasn't changed packaging type, select smart default
+    if (document.activeElement === pProd) {
+      pPkgType.value = (prod && prod.default_packaging_type) ? prod.default_packaging_type : (isLiquid ? 'Bottle' : 'Bag');
+    }
+
+    const selType = pPkgType.value;
+
+    if (selType.toLowerCase() === 'loose') {
+      if (pPkgSizeGroup) pPkgSizeGroup.style.display = 'none';
+      if (pCountLabel) pCountLabel.textContent = `4. Quantity (${prod ? prod.unit : 'KG'} Loose) *`;
+      if (pPriceLabel) pPriceLabel.textContent = `Unit Price (₹ per ${prod ? prod.unit : 'KG'})`;
+      if (pPkgUnitHidden) pPkgUnitHidden.value = prod ? prod.unit : 'kg';
+    } else {
+      if (pPkgSizeGroup) pPkgSizeGroup.style.display = 'block';
+      if (pCountLabel) pCountLabel.textContent = `4. Quantity (Number of ${selType}s) *`;
+      if (pPriceLabel) pPriceLabel.textContent = `Unit Price (₹ per ${selType})`;
+
+      // Populate package sizes for selected packaging type
+      let matching = this.state.packages.filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
+      if (isLiquid) {
+        const liquidMatches = matching.filter(p => ['l', 'ml'].includes(p.unit_symbol.toLowerCase()));
+        if (liquidMatches.length) matching = liquidMatches;
+      } else {
+        const weightMatches = matching.filter(p => ['kg', 'g', 'ton'].includes(p.unit_symbol.toLowerCase()));
+        if (weightMatches.length) matching = weightMatches;
+      }
+
+      pPkgSize.innerHTML = matching.map(p =>
+        `<option value="${p.package_size}" data-unit="${p.unit_symbol}" data-multiplier="${p.base_multiplier}">${p.label || `${p.package_size} ${p.unit_symbol} ${p.packaging_type}`}</option>`
+      ).join('');
+
+      // Auto select product's configured default bag size
+      if (prod && prod.default_package_size) {
+        const found = matching.find(p => p.package_size == prod.default_package_size);
+        if (found) {
+          pPkgSize.value = found.package_size;
+          if (pPkgUnitHidden) pPkgUnitHidden.value = found.unit_symbol;
+        } else if (matching.length && pPkgUnitHidden) {
+          pPkgUnitHidden.value = matching[0].unit_symbol;
+        }
+      } else if (matching.length && pPkgUnitHidden) {
+        pPkgUnitHidden.value = matching[0].unit_symbol;
+      }
+
+      // Auto select default quantity (e.g. 1 Bag)
+      const pPkgCount = document.getElementById('purchasePkgCount');
+      if (document.activeElement === pProd && prod && prod.default_package_count && pPkgCount) {
+        pPkgCount.value = prod.default_package_count;
+      }
+    }
+
+    this.recalcPurchaseTotal();
+  },
+
+  recalcPurchaseTotal() {
+    const pProd = document.getElementById('purchaseProduct');
+    const pPkgType = document.getElementById('purchasePkgType');
+    const pPkgSize = document.getElementById('purchasePkgSize');
+    const pPkgCount = document.getElementById('purchasePkgCount');
+    const pUnitPrice = document.getElementById('purchaseUnitPrice');
+    const pTotalPrice = document.getElementById('purchaseTotalPrice');
+    const pQtyHidden = document.getElementById('purchaseQty');
+    const pPkgUnitHidden = document.getElementById('purchasePkgUnit');
+    const pCalcResult = document.getElementById('purchaseCalcResult');
+
+    if (!pProd || !pPkgType || !pPkgCount || !pCalcResult) return;
+
+    const prod = this.state.products.find(p => p.id == pProd.value);
+    const baseSym = (prod && prod.unit) ? prod.unit : 'kg';
+    const pkgType = pPkgType.value || 'Bag';
+    const count = parseFloat(pPkgCount.value) || 0;
+
+    if (pkgType.toLowerCase() === 'loose') {
+      pQtyHidden.value = count;
+      if (pPkgUnitHidden) pPkgUnitHidden.value = baseSym;
+      pCalcResult.innerHTML = `<strong>${count} ${baseSym} Loose</strong>`;
+    } else {
+      const opt = pPkgSize.options[pPkgSize.selectedIndex];
+      if (opt && opt.value) {
+        const size = parseFloat(opt.value) || 0;
+        const unit = opt.dataset.unit || baseSym;
+        const mult = parseFloat(opt.dataset.multiplier) || size;
+        const total = Math.round(count * mult * 10000) / 10000;
+        pQtyHidden.value = total;
+        if (pPkgUnitHidden) pPkgUnitHidden.value = unit;
+
+        const noun = count === 1 ? pkgType : (pkgType.endsWith('s') ? pkgType : pkgType + 's');
+        pCalcResult.innerHTML = `<strong>${count} × ${size} ${unit} ${noun} = ${total} ${baseSym}</strong>`;
+      } else {
+        pQtyHidden.value = 0;
+        pCalcResult.innerHTML = `<strong>0 ${baseSym}</strong>`;
+      }
+    }
+
+    // Update prices if needed
+    if (count > 0 && pUnitPrice && pTotalPrice) {
+      const rate = parseFloat(pUnitPrice.value) || 0;
+      if (rate > 0 && document.activeElement === pUnitPrice) {
+        pTotalPrice.value = (count * rate).toFixed(2);
+      }
+    }
+  },
+
+  syncUsagePackagingUI() {
+    const uProd = document.getElementById('usageProduct');
+    const uStockHint = document.getElementById('usageStockHint');
+    const uPkgType = document.getElementById('usagePkgType');
+    const uUnitHidden = document.getElementById('usageUnit');
+
+    if (!uProd) return;
+    const prod = this.state.products.find(p => p.id == uProd.value);
+
+    if (prod) {
+      if (uStockHint) {
+        let breakdownText = '';
+        if (prod.package_breakdown && prod.package_breakdown.length) {
+          breakdownText = ' • Packages: ' + prod.package_breakdown.map(b => b.description).join(', ');
+        }
+        uStockHint.textContent = `Current Stock: ${prod.current_quantity} ${prod.unit || ''}${breakdownText}`;
+      }
+      if (uUnitHidden) uUnitHidden.value = prod.unit_id || '';
+
+      const isLiquid = (prod.unit || '').toLowerCase() === 'l' || prod.name.toLowerCase().includes('liquid');
+      if (uPkgType) uPkgType.value = (prod && prod.default_packaging_type) ? prod.default_packaging_type : (isLiquid ? 'Bottle' : 'Bag');
+    } else {
+      if (uStockHint) uStockHint.textContent = '';
+    }
+
+    this.syncUsagePackagingSizes();
+  },
+
+  syncUsagePackagingSizes() {
+    const uProd = document.getElementById('usageProduct');
+    const uPkgType = document.getElementById('usagePkgType');
+    const uPkgSize = document.getElementById('usagePkgSize');
+    const uPkgSizeGroup = document.getElementById('usagePkgSizeGroup');
+    const uCountLabel = document.getElementById('usagePkgCountLabel');
+    const uPkgUnitHidden = document.getElementById('usagePkgUnit');
+
+    if (!uProd || !uPkgType || !uPkgSize) return;
+
+    const prod = this.state.products.find(p => p.id == uProd.value);
+    const baseUnit = (prod && prod.unit) ? prod.unit.toLowerCase() : 'kg';
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || (prod && prod.name.toLowerCase().includes('liquid')));
+    const selType = uPkgType.value;
+
+    if (selType.toLowerCase() === 'loose') {
+      if (uPkgSizeGroup) uPkgSizeGroup.style.display = 'none';
+      if (uCountLabel) uCountLabel.textContent = `4. Quantity Used (${prod ? prod.unit : 'KG'} Loose) *`;
+      if (uPkgUnitHidden) uPkgUnitHidden.value = prod ? prod.unit : 'kg';
+    } else {
+      if (uPkgSizeGroup) uPkgSizeGroup.style.display = 'block';
+      if (uCountLabel) uCountLabel.textContent = `4. Quantity Used (Number of ${selType}s) *`;
+
+      // Check if product has specific stock breakdown for this package type
+      let options = [];
+      if (prod && prod.package_breakdown && prod.package_breakdown.length) {
+        const typeBreakdown = prod.package_breakdown.filter(b => b.packaging_type.toLowerCase() === selType.toLowerCase());
+        if (typeBreakdown.length) {
+          options = typeBreakdown.map(b => ({
+            package_size: b.package_size,
+            unit_symbol: b.unit_symbol,
+            base_multiplier: (b.total_quantity && b.package_count) ? (b.total_quantity / b.package_count) : b.package_size,
+            label: `${b.package_size} ${b.unit_symbol} (In Stock: ${b.package_count} ${selType}s)`
+          }));
+        }
+      }
+
+      if (!options.length) {
+        let matching = this.state.packages.filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
+        if (isLiquid) {
+          const liquidMatches = matching.filter(p => ['l', 'ml'].includes(p.unit_symbol.toLowerCase()));
+          if (liquidMatches.length) matching = liquidMatches;
+        } else {
+          const weightMatches = matching.filter(p => ['kg', 'g', 'ton'].includes(p.unit_symbol.toLowerCase()));
+          if (weightMatches.length) matching = weightMatches;
+        }
+        options = matching;
+      }
+
+      uPkgSize.innerHTML = options.map(p =>
+        `<option value="${p.package_size}" data-unit="${p.unit_symbol}" data-multiplier="${p.base_multiplier}">${p.label || `${p.package_size} ${p.unit_symbol} ${selType}`}</option>`
+      ).join('');
+
+      // Auto select product's configured default bag size
+      if (prod && prod.default_package_size) {
+        const found = options.find(p => p.package_size == prod.default_package_size);
+        if (found) {
+          uPkgSize.value = found.package_size;
+          if (uPkgUnitHidden) uPkgUnitHidden.value = found.unit_symbol;
+        } else if (options.length && uPkgUnitHidden) {
+          uPkgUnitHidden.value = options[0].unit_symbol;
+        }
+      } else if (options.length && uPkgUnitHidden) {
+        uPkgUnitHidden.value = options[0].unit_symbol;
+      }
+
+      // Auto select default quantity (e.g. 1 Bag)
+      const uPkgCount = document.getElementById('usagePkgCount');
+      if (document.activeElement === uProd && prod && prod.default_package_count && uPkgCount) {
+        uPkgCount.value = prod.default_package_count;
+      }
+    }
+
+    this.recalcUsageTotal();
+  },
+
+  recalcUsageTotal() {
+    const uProd = document.getElementById('usageProduct');
+    const uPkgType = document.getElementById('usagePkgType');
+    const uPkgSize = document.getElementById('usagePkgSize');
+    const uPkgCount = document.getElementById('usagePkgCount');
+    const uQtyHidden = document.getElementById('usageQty');
+    const uPkgUnitHidden = document.getElementById('usagePkgUnit');
+    const uCalcResult = document.getElementById('usageCalcResult');
+
+    if (!uProd || !uPkgType || !uPkgCount || !uCalcResult) return;
+
+    const prod = this.state.products.find(p => p.id == uProd.value);
+    const baseSym = (prod && prod.unit) ? prod.unit : 'kg';
+    const pkgType = uPkgType.value || 'Bag';
+    const count = parseFloat(uPkgCount.value) || 0;
+
+    if (pkgType.toLowerCase() === 'loose') {
+      uQtyHidden.value = count;
+      if (uPkgUnitHidden) uPkgUnitHidden.value = baseSym;
+      uCalcResult.innerHTML = `<strong>${count} ${baseSym} Loose</strong>`;
+    } else {
+      const opt = uPkgSize.options[uPkgSize.selectedIndex];
+      if (opt && opt.value) {
+        const size = parseFloat(opt.value) || 0;
+        const unit = opt.dataset.unit || baseSym;
+        const mult = parseFloat(opt.dataset.multiplier) || size;
+        const total = Math.round(count * mult * 10000) / 10000;
+        uQtyHidden.value = total;
+        if (uPkgUnitHidden) uPkgUnitHidden.value = unit;
+
+        const noun = count === 1 ? pkgType : (pkgType.endsWith('s') ? pkgType : pkgType + 's');
+        uCalcResult.innerHTML = `<strong>${count} × ${size} ${unit} ${noun} = ${total} ${baseSym}</strong>`;
+      } else {
+        uQtyHidden.value = 0;
+        uCalcResult.innerHTML = `<strong>0 ${baseSym}</strong>`;
+      }
+    }
+  },
 };
 
 window.App = App;
 document.addEventListener('DOMContentLoaded', () => App.init());
+
