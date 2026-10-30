@@ -202,5 +202,60 @@ class UnitPackageOpeningStockTests(unittest.TestCase):
         self.assertIn('Insufficient', err)
 
 
+    def test_add_direct_kg_and_edit_category_unit_quantity(self):
+        """
+        User issue:
+        1. In Add Product, select direct KG: enter quantity directly without bags.
+        2. In Edit Product, user can change Category, Unit/Package, and Quantity.
+        """
+        # 1. Add product with direct KG
+        res = self.client.post('/api/products', json={
+            'name': 'UREA_DIRECT_KG',
+            'category_id': 1,
+            'unit_package': 'gen_kg',
+            'default_packaging_type': 'Unit',
+            'default_package_size': 1.0,
+            'default_package_unit': 'kg',
+            'bag_quantity': 50.0,  # Single direct quantity
+            'loose_quantity': 0.0,
+            'current_quantity': 50.0,
+            'minimum_stock': 10.0,
+        })
+        self.assertEqual(res.status_code, 201)
+        p_id = res.get_json()['product']['id']
+
+        prod = Product.query.get(p_id)
+        self.assertEqual(prod.current_quantity, 50.0)
+        self.assertEqual(prod.category_id, 1)
+
+        # 2. Edit product: Change Category (to 2), Change Packaging to 25 kg Bag, Change Quantity to 75 kg (3 bags)
+        res_edit = self.client.put(f'/api/products/{p_id}', json={
+            'name': 'UREA_DIRECT_KG',
+            'category_id': 2,
+            'default_packaging_type': 'Bag',
+            'default_package_size': 25.0,
+            'default_package_unit': 'kg',
+            'default_package_count': 3.0,
+            'bag_quantity': 3.0,
+            'loose_quantity': 0.0,
+            'current_quantity': 75.0,
+            'minimum_stock': 15.0,
+        })
+        self.assertEqual(res_edit.status_code, 200)
+
+        # Verify database record updated
+        prod_updated = Product.query.get(p_id)
+        self.assertEqual(prod_updated.category_id, 2)
+        self.assertEqual(prod_updated.default_packaging_type, 'Bag')
+        self.assertEqual(prod_updated.default_package_size, 25.0)
+        self.assertEqual(prod_updated.current_quantity, 75.0)
+        self.assertEqual(prod_updated.bag_stock, 3.0)
+
+        # Verify ledger has adjustment record
+        last_mov = prod_updated.stock_movements[0]
+        self.assertEqual(last_mov.movement_type, 'ADJUSTMENT')
+        self.assertEqual(last_mov.quantity, 25.0)  # 50 -> 75
+
+
 if __name__ == '__main__':
     unittest.main()

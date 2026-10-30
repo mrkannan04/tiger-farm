@@ -295,8 +295,11 @@ const ProductsView = {
       this.fetchAndRenderList();
     });
 
-    // Helper to calculate opening stock live (Section 6-9, 18)
-    const updateOpeningStockCalc = () => {
+    // Helper to calculate opening or current stock live (Section 6-9, 18)
+    const updateOpeningStockCalc = (forceIsEdit) => {
+      const editId = document.getElementById('productEditId')?.value;
+      const isEdit = forceIsEdit !== undefined ? forceIsEdit : Boolean(editId);
+
       const sel = document.getElementById('productUnitPackage');
       if (!sel) return;
       const opt = sel.options[sel.selectedIndex];
@@ -312,44 +315,96 @@ const ProductsView = {
       const looseIn = document.getElementById('productLooseQuantity');
       const bagRow = document.getElementById('openingBagRow');
       const bagText = document.getElementById('openingBagText');
+      const bagLabel = document.getElementById('openingBagLabel');
+      const looseRow = document.getElementById('openingLooseRow');
       const looseText = document.getElementById('openingLooseText');
+      const looseRowLabel = document.getElementById('openingLooseLabel');
       const totalText = document.getElementById('openingTotalText');
+      const totalLabel = document.getElementById('openingTotalLabel');
+      const cardTitle = document.getElementById('productOpeningCardTitle');
+      const badge = document.getElementById('productOpeningBadge');
       const bagGroup = document.getElementById('productBagQtyGroup');
-      const looseLabel = document.getElementById('productLooseQuantityLabel');
+      const bagInputLabel = document.getElementById('productBagQuantityLabel');
+      const bagInputHint = document.getElementById('productBagQtyHint');
+      const looseGroup = document.getElementById('productLooseQtyGroup');
+      const looseInputLabel = document.getElementById('productLooseQuantityLabel');
+      const looseInputHint = document.getElementById('productLooseQtyHint');
 
-      const isLoose = pType.toLowerCase() === 'loose';
-      const bagQty = isLoose ? 0.0 : (parseFloat(bagIn?.value) || 0.0);
-      const looseQty = parseFloat(looseIn?.value) || 0.0;
+      const isBag = pType.toLowerCase() === 'bag' && !opt.value.startsWith('gen_');
+      const isBottle = pType.toLowerCase() === 'bottle' && !opt.value.startsWith('gen_');
+      const isDiscretePkg = (isBag || isBottle || ['pouch', 'container', 'drum', 'box'].includes(pType.toLowerCase())) && pSize > 0 && !opt.value.startsWith('gen_') && !opt.value.includes('loose');
 
-      if (isLoose) {
-        if (bagGroup) bagGroup.style.display = 'none';
-        if (bagRow) bagRow.style.display = 'none';
-        if (looseLabel) looseLabel.textContent = 'Loose Quantity *';
-        if (looseText) looseText.textContent = `${looseQty} ${pUnit} Loose`;
-        if (totalText) totalText.textContent = `${looseQty} ${pUnit}`;
-      } else {
+      const bagQty = parseFloat(bagIn?.value) || 0.0;
+      const looseQty = isDiscretePkg ? (parseFloat(looseIn?.value) || 0.0) : 0.0;
+
+      // Update card headers
+      if (cardTitle) cardTitle.textContent = isEdit ? 'Stock Adjustment & Balance' : 'Opening Stock Calculation';
+      if (badge) badge.textContent = isEdit ? 'Current Stock' : 'Live Summary';
+      if (totalLabel) totalLabel.textContent = isEdit ? 'TOTAL CURRENT STOCK:' : 'TOTAL OPENING STOCK:';
+
+      if (!isDiscretePkg) {
+        // Plain / Direct Unit (KG, Liter, Gram, Ton, Loose KG, Loose L, etc.)
         if (bagGroup) bagGroup.style.display = 'block';
+        if (bagInputLabel) bagInputLabel.textContent = `${isEdit ? 'Current Stock' : 'Quantity'} (${pUnit}) *`;
+        if (bagInputHint) bagInputHint.textContent = `Enter total quantity in ${pUnit} (e.g. 25)`;
+        if (bagIn) bagIn.placeholder = 'e.g. 25';
+
+        // Hide loose quantity input (avoids asking for loose quantity when product itself is KG)
+        if (looseGroup) looseGroup.style.display = 'none';
+        if (looseIn) looseIn.value = '0';
+
+        // Hide calculation breakdown rows; show clean direct stock
+        if (bagRow) bagRow.style.display = 'none';
+        if (looseRow) looseRow.style.display = 'none';
+        if (totalText) totalText.textContent = `${bagQty} ${pUnit}`;
+
+        // Sync hidden inputs
+        if (document.getElementById('productDefaultPackagingType')) document.getElementById('productDefaultPackagingType').value = 'Unit';
+        if (document.getElementById('productDefaultPackageSize')) document.getElementById('productDefaultPackageSize').value = '1';
+        if (document.getElementById('productDefaultPackageUnit')) document.getElementById('productDefaultPackageUnit').value = pUnit;
+        if (document.getElementById('productDefaultQuantity')) document.getElementById('productDefaultQuantity').value = bagQty;
+        if (document.getElementById('productInitialQty')) document.getElementById('productInitialQty').value = bagQty;
+      } else {
+        // Discrete Package (25 kg Bag, 50 kg Bag, 1 L Bottle, etc.)
+        if (bagGroup) bagGroup.style.display = 'block';
+        const nounSingular = isBag ? 'Bag' : (isBottle ? 'Bottle' : pType);
+        const nounPlural = isBag ? 'Bags' : (isBottle ? 'Bottles' : `${pType}s`);
+        
+        if (bagInputLabel) bagInputLabel.textContent = `${isEdit ? 'Current ' : ''}${nounSingular} Quantity (${nounPlural}) *`;
+        if (bagInputHint) bagInputHint.textContent = `Number of ${nounPlural.toLowerCase()} (default: 1)`;
+        if (bagIn) bagIn.placeholder = '1';
+
+        if (looseGroup) looseGroup.style.display = 'block';
+        if (looseInputLabel) looseInputLabel.textContent = `Loose Quantity (Optional, ${pBase})`;
+        if (looseInputHint) looseInputHint.textContent = `Additional loose ${pBase} stock (e.g. 5)`;
+
         if (bagRow) bagRow.style.display = 'flex';
-        if (looseLabel) looseLabel.textContent = 'Loose Quantity (Optional)';
+        if (looseRow) looseRow.style.display = 'flex';
+
         const bagWeight = Math.round(bagQty * pMult * 10000) / 10000;
         const total = Math.round((bagWeight + looseQty) * 10000) / 10000;
 
-        if (bagText) bagText.textContent = `${bagQty} × ${pSize} ${pUnit} = ${bagWeight} ${pBase}`;
+        const countNoun = bagQty === 1 ? nounSingular : nounPlural;
+        if (bagLabel) bagLabel.textContent = `${nounSingular} Stock:`;
+        if (bagText) bagText.textContent = `${bagQty} ${countNoun} × ${pSize} ${pUnit} = ${bagWeight} ${pBase}`;
+        if (looseRowLabel) looseRowLabel.textContent = `Loose Stock:`;
         if (looseText) looseText.textContent = `${looseQty} ${pBase}`;
         if (totalText) totalText.textContent = `${total} ${pBase}`;
+
+        // Sync hidden inputs
+        if (document.getElementById('productDefaultPackagingType')) document.getElementById('productDefaultPackagingType').value = pType;
+        if (document.getElementById('productDefaultPackageSize')) document.getElementById('productDefaultPackageSize').value = pSize;
+        if (document.getElementById('productDefaultPackageUnit')) document.getElementById('productDefaultPackageUnit').value = pUnit;
+        if (document.getElementById('productDefaultQuantity')) document.getElementById('productDefaultQuantity').value = bagQty || 1;
+        if (document.getElementById('productInitialQty')) document.getElementById('productInitialQty').value = total;
       }
 
-      // Sync hidden inputs
-      if (document.getElementById('productDefaultPackagingType')) document.getElementById('productDefaultPackagingType').value = pType;
-      if (document.getElementById('productDefaultPackageSize')) document.getElementById('productDefaultPackageSize').value = pSize;
-      if (document.getElementById('productDefaultPackageUnit')) document.getElementById('productDefaultPackageUnit').value = pUnit;
-      if (document.getElementById('productDefaultQuantity')) document.getElementById('productDefaultQuantity').value = isLoose ? looseQty : (bagQty || 1);
-      
-      const totalVal = isLoose ? looseQty : (Math.round((bagQty * pMult + looseQty) * 10000) / 10000);
-      if (document.getElementById('productInitialQty')) document.getElementById('productInitialQty').value = totalVal;
-
       // Match unit_id
-      const uMatch = (App.state.units || []).find(u => u.symbol.toLowerCase() === pBase.toLowerCase());
+      const uMatch = (App.state.units || []).find(u => 
+        u.symbol.toLowerCase() === pBase.toLowerCase() || 
+        u.symbol.toLowerCase() === pUnit.toLowerCase() ||
+        u.name.toLowerCase() === pUnit.toLowerCase()
+      );
       if (uMatch && document.getElementById('productUnit')) {
         document.getElementById('productUnit').value = uMatch.id;
       }
@@ -359,15 +414,17 @@ const ProductsView = {
     if (pkgSel && !pkgSel.dataset.bound) {
       pkgSel.dataset.bound = 'true';
       pkgSel.addEventListener('change', () => {
-        const isLoose = pkgSel.options[pkgSel.selectedIndex]?.dataset.type?.toLowerCase() === 'loose';
+        const selOpt = pkgSel.options[pkgSel.selectedIndex];
+        const isDiscrete = selOpt && selOpt.dataset.size && parseFloat(selOpt.dataset.size) > 0 && !selOpt.value.startsWith('gen_') && !selOpt.value.includes('loose');
         const bagIn = document.getElementById('productBagQuantity');
-        if (!isLoose && bagIn && (!bagIn.value || parseFloat(bagIn.value) <= 0)) {
+        const isEdit = Boolean(document.getElementById('productEditId')?.value);
+        if (isDiscrete && bagIn && (!bagIn.value || parseFloat(bagIn.value) <= 0) && !isEdit) {
           bagIn.value = '1';
         }
         updateOpeningStockCalc();
       });
-      document.getElementById('productBagQuantity')?.addEventListener('input', updateOpeningStockCalc);
-      document.getElementById('productLooseQuantity')?.addEventListener('input', updateOpeningStockCalc);
+      document.getElementById('productBagQuantity')?.addEventListener('input', () => updateOpeningStockCalc());
+      document.getElementById('productLooseQuantity')?.addEventListener('input', () => updateOpeningStockCalc());
     }
 
     // Add Product Modal open
@@ -375,6 +432,7 @@ const ProductsView = {
       document.getElementById('formProduct').reset();
       document.getElementById('productEditId').value = '';
       document.getElementById('modalProductTitle').textContent = 'Add New Product';
+      document.getElementById('btnSubmitProduct').textContent = 'Save Product';
       
       const openInputs = document.getElementById('productOpeningStockInputs');
       const openCard = document.getElementById('productOpeningStockCard');
@@ -387,7 +445,7 @@ const ProductsView = {
       if (document.getElementById('productMinStock')) document.getElementById('productMinStock').value = '5';
       if (document.getElementById('productStatusSelect')) document.getElementById('productStatusSelect').value = 'true';
 
-      updateOpeningStockCalc();
+      updateOpeningStockCalc(false);
       App.openModal('modalProduct');
     });
 
@@ -405,7 +463,7 @@ const ProductsView = {
         const editId = document.getElementById('productEditId').value;
         const btn = document.getElementById('btnSubmitProduct');
         btn.disabled = true;
-        btn.textContent = 'Saving to Database...';
+        btn.textContent = editId ? 'Saving Changes...' : 'Saving to Database...';
 
         updateOpeningStockCalc();
 
@@ -435,7 +493,7 @@ const ProductsView = {
           });
           const data = await res.json();
           if (res.ok && data.success !== false) {
-            App.showToast(data.message || 'Product saved successfully to database!');
+            App.showToast(data.message || (editId ? 'Product changes saved successfully!' : 'Product saved successfully to database!'));
             App.closeModal('modalProduct');
             await App.loadMetadata();
             ProductsView.fetchAndRenderList();
@@ -447,7 +505,7 @@ const ProductsView = {
           App.showToast('Unable to save product. Please try again: ' + err.message, 'error');
         } finally {
           btn.disabled = false;
-          btn.textContent = 'Save Product';
+          btn.textContent = editId ? 'Save Changes' : 'Save Product';
         }
       });
     }
@@ -498,28 +556,57 @@ const ProductsView = {
 
           document.getElementById('productEditId').value = p.id;
           document.getElementById('modalProductTitle').textContent = `Edit "${p.name}"`;
+          document.getElementById('btnSubmitProduct').textContent = 'Save Changes';
           document.getElementById('productName').value = p.name;
-          document.getElementById('productCategory').value = p.category_id || '';
+
+          // Ensure category dropdown is populated and selected
+          const catSel = document.getElementById('productCategory');
+          if (catSel) {
+            if (catSel.options.length <= 1 && App.state.categories?.length) {
+              catSel.innerHTML = '<option value="">Select category...</option>' +
+                App.state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            }
+            catSel.value = p.category_id ? String(p.category_id) : '';
+          }
+
           document.getElementById('productUnit').value = p.unit_id || '';
           document.getElementById('productMinStock').value = p.minimum_stock;
           document.getElementById('productStatusSelect').value = p.is_active ? 'true' : 'false';
           document.getElementById('productDesc').value = p.description || '';
-          
-          // Hide opening stock inputs in edit mode (Opening stock is set upon creation)
-          const openInputs = document.getElementById('productOpeningStockInputs');
-          const openCard = document.getElementById('productOpeningStockCard');
-          if (openInputs) openInputs.style.display = 'none';
-          if (openCard) openCard.style.display = 'none';
 
+          // Match unit / package dropdown option
           const pkgSel = document.getElementById('productUnitPackage');
           if (pkgSel) {
-            // Find option matching packaging_type and size
             let matchOpt = null;
+            const pType = (p.default_packaging_type || '').toLowerCase();
+            const pSize = parseFloat(p.default_package_size);
+            const pUnit = (p.default_package_unit || p.unit || '').toLowerCase();
+
+            // 1st pass: match by package size + packaging type
             for (let i = 0; i < pkgSel.options.length; i++) {
               const opt = pkgSel.options[i];
-              if (p.default_package_size && opt.dataset.size == p.default_package_size && opt.dataset.type?.toLowerCase() === (p.default_packaging_type || 'Bag').toLowerCase()) {
+              const optType = (opt.dataset.type || '').toLowerCase();
+              const optSize = parseFloat(opt.dataset.size);
+              if (pSize && Math.abs(optSize - pSize) < 0.001 && optType === pType) {
                 matchOpt = opt;
                 break;
+              }
+            }
+            // 2nd pass: loose / direct unit matching
+            if (!matchOpt) {
+              for (let i = 0; i < pkgSel.options.length; i++) {
+                const opt = pkgSel.options[i];
+                const optUnit = (opt.dataset.unit || '').toLowerCase();
+                const optBase = (opt.dataset.base || '').toLowerCase();
+                const optType = (opt.dataset.type || '').toLowerCase();
+                if (optUnit === pUnit || optBase === pUnit) {
+                  if ((pType === 'loose' || pType === 'unit') && (optType === 'loose' || optType === 'unit')) {
+                    matchOpt = opt;
+                    break;
+                  } else if (!matchOpt) {
+                    matchOpt = opt;
+                  }
+                }
               }
             }
             if (matchOpt) {
@@ -537,6 +624,28 @@ const ProductsView = {
             document.getElementById('productDefaultQuantity').value = p.default_package_count || 1;
           }
 
+          // Keep current stock inputs and live card visible so user can adjust quantity
+          const openInputs = document.getElementById('productOpeningStockInputs');
+          const openCard = document.getElementById('productOpeningStockCard');
+          if (openInputs) openInputs.style.display = 'flex';
+          if (openCard) openCard.style.display = 'block';
+
+          const bagIn = document.getElementById('productBagQuantity');
+          const looseIn = document.getElementById('productLooseQuantity');
+          if (bagIn) {
+            if (p.bag_stock !== undefined && p.bag_stock !== null && p.bag_stock > 0) {
+              bagIn.value = p.bag_stock;
+            } else if (p.default_package_size && p.default_package_size > 0 && (p.default_packaging_type || '').toLowerCase() === 'bag') {
+              bagIn.value = p.default_package_count || (Math.round((p.current_quantity / p.default_package_size) * 100) / 100) || 1;
+            } else {
+              bagIn.value = p.current_quantity || 0;
+            }
+          }
+          if (looseIn) {
+            looseIn.value = (p.loose_stock !== undefined && p.loose_stock !== null) ? p.loose_stock : 0;
+          }
+
+          updateOpeningStockCalc(true);
           App.openModal('modalProduct');
         } catch (err) {
           App.showToast(err.message, 'error');

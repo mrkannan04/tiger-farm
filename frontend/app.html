@@ -12,8 +12,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/style.css?v=2.1.1" />
-  <link rel="stylesheet" href="/css/print.css?v=2.1.1" media="print" />
+  <link rel="stylesheet" href="/css/style.css?v=2.1.2" />
+  <link rel="stylesheet" href="/css/print.css?v=2.1.2" media="print" />
   <!-- Chart.js for data visualization -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
@@ -459,21 +459,21 @@
         <div class="calculation-card" id="productOpeningStockCard" style="display:block; padding:0.9rem 1.1rem; margin-bottom:1rem;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; border-bottom:1px solid rgba(82,183,136,0.25); padding-bottom:0.4rem;">
             <strong style="color:var(--green-dark); font-size:0.9rem; display:flex; align-items:center; gap:0.35rem;">
-              <span>📊</span> Opening Stock Calculation
+              <span>📊</span> <span id="productOpeningCardTitle">Opening Stock Calculation</span>
             </strong>
             <span class="calc-badge" id="productOpeningBadge">Live Summary</span>
           </div>
           <div style="display:flex; flex-direction:column; gap:0.35rem; font-size:0.88rem;">
             <div id="openingBagRow" style="display:flex; justify-content:space-between;">
-              <span style="color:var(--text-mid);">Bag Stock:</span>
+              <span id="openingBagLabel" style="color:var(--text-mid);">Bag Stock:</span>
               <strong id="openingBagText" style="color:var(--green-dark);">1 × 25 kg = 25 kg</strong>
             </div>
             <div id="openingLooseRow" style="display:flex; justify-content:space-between;">
-              <span style="color:var(--text-mid);">Loose Stock:</span>
+              <span id="openingLooseLabel" style="color:var(--text-mid);">Loose Stock:</span>
               <strong id="openingLooseText" style="color:var(--muted);">0 kg</strong>
             </div>
             <div style="border-top:1.5px dashed var(--green-mid); margin-top:0.3rem; padding-top:0.45rem; display:flex; justify-content:space-between; align-items:center;">
-              <strong style="color:var(--text); font-size:0.95rem;">TOTAL OPENING STOCK:</strong>
+              <strong id="openingTotalLabel" style="color:var(--text); font-size:0.95rem;">TOTAL OPENING STOCK:</strong>
               <strong id="openingTotalText" style="color:#1b4332; font-size:1.15rem; font-weight:800;">25 kg</strong>
             </div>
           </div>
@@ -797,15 +797,15 @@
 </div>
 
 <!-- JavaScript Application Modules -->
-<script src="/js/app.js?v=2.1.1"></script>
-<script src="/js/dashboard.js?v=2.1.1"></script>
-<script src="/js/products.js?v=2.1.1"></script>
-<script src="/js/purchases.js?v=2.1.1"></script>
-<script src="/js/usage.js?v=2.1.1"></script>
-<script src="/js/analytics.js?v=2.1.1"></script>
-<script src="/js/notifications.js?v=2.1.1"></script>
-<script src="/js/reports.js?v=2.1.1"></script>
-<script src="/js/settings.js?v=2.1.1"></script>
+<script src="/js/app.js?v=2.1.2"></script>
+<script src="/js/dashboard.js?v=2.1.2"></script>
+<script src="/js/products.js?v=2.1.2"></script>
+<script src="/js/purchases.js?v=2.1.2"></script>
+<script src="/js/usage.js?v=2.1.2"></script>
+<script src="/js/analytics.js?v=2.1.2"></script>
+<script src="/js/notifications.js?v=2.1.2"></script>
+<script src="/js/reports.js?v=2.1.2"></script>
+<script src="/js/settings.js?v=2.1.2"></script>
 
 </body>
 </html>

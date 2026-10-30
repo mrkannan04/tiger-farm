@@ -323,14 +323,29 @@ def update_product(product_id):
 
         if 'category_id' in data and data['category_id']:
             product.category_id = int(data['category_id'])
+
+        # Unit update with fallback resolution
         if 'unit_id' in data and data['unit_id']:
-            product.unit_id = int(data['unit_id'])
+            try:
+                product.unit_id = int(data['unit_id'])
+            except (ValueError, TypeError):
+                pass
+        elif 'default_package_unit' in data or 'unit' in data:
+            unit_sym = (data.get('default_package_unit') or data.get('unit') or '').strip().lower()
+            if unit_sym:
+                u_obj = Unit.query.filter(db.func.lower(Unit.symbol) == unit_sym).first()
+                if not u_obj:
+                    u_obj = Unit.query.filter(db.func.lower(Unit.name) == unit_sym).first()
+                if u_obj:
+                    product.unit_id = u_obj.id
+
         if 'minimum_stock' in data and data['minimum_stock'] is not None:
             product.minimum_stock = float(data['minimum_stock'])
         if 'description' in data:
             product.description = (data['description'] or '').strip() or None
         if 'is_active' in data:
             product.is_active = bool(data['is_active'])
+
         if 'default_packaging_type' in data:
             product.default_packaging_type = data['default_packaging_type'] or 'Bag'
         if 'default_package_size' in data:
@@ -339,6 +354,65 @@ def update_product(product_id):
             product.default_package_unit = data['default_package_unit']
         if 'default_package_count' in data:
             product.default_package_count = float(data['default_package_count']) if data['default_package_count'] not in (None, '') else 1.0
+
+        # Quantity / Stock adjustment in Edit Product
+        if 'current_quantity' in data and data['current_quantity'] is not None:
+            try:
+                new_qty = float(data['current_quantity'])
+                old_qty = product.current_quantity or 0.0
+                bag_qty = float(data.get('bag_quantity', 0.0))
+                loose_qty = float(data.get('loose_quantity', 0.0))
+                pkg_type = product.default_packaging_type or 'Bag'
+                pkg_size = product.default_package_size
+                pkg_unit = product.default_package_unit or (product.unit.symbol if product.unit else 'kg')
+                base_sym = product.unit.symbol if product.unit else 'kg'
+
+                is_discrete = (pkg_type.lower() in ('bag', 'bottle', 'pouch', 'container', 'drum', 'box')) and (pkg_size is not None and pkg_size > 0)
+
+                # Recreate discrete package stocks for updated stock levels
+                ProductPackageStock.query.filter_by(product_id=product.id).delete()
+
+                if is_discrete and bag_qty > 0:
+                    pkg_mult = pkg_size
+                    if pkg_unit.lower() in ('g', 'gm', 'ml'):
+                        pkg_mult = pkg_size / 1000.0
+                    db.session.add(ProductPackageStock(
+                        product_id=product.id,
+                        packaging_type=pkg_type,
+                        package_size=pkg_size,
+                        unit_symbol=pkg_unit,
+                        package_count=bag_qty,
+                        total_quantity=round(bag_qty * pkg_mult, 4),
+                    ))
+
+                if loose_qty > 0 or not is_discrete:
+                    loose_c = new_qty if not is_discrete else loose_qty
+                    db.session.add(ProductPackageStock(
+                        product_id=product.id,
+                        packaging_type='Loose',
+                        package_size=1.0,
+                        unit_symbol=base_sym,
+                        package_count=loose_c,
+                        total_quantity=loose_c,
+                    ))
+
+                if abs(new_qty - old_qty) > 0.0001:
+                    diff = new_qty - old_qty
+                    product.current_quantity = new_qty
+                    db.session.add(StockMovement(
+                        product_id=product.id,
+                        movement_type='ADJUSTMENT',
+                        quantity=diff,
+                        balance_after=new_qty,
+                        movement_date=date.today(),
+                        packaging_type=pkg_type,
+                        package_summary=f"Stock updated to {new_qty:g} {base_sym}",
+                        remarks=f"Product master edit stock adjustment: {old_qty:g} -> {new_qty:g} {base_sym}",
+                    ))
+                else:
+                    product.current_quantity = new_qty
+            except (ValueError, TypeError):
+                pass
 
         _check_and_update_notifications(product)
 

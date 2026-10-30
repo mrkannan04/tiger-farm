@@ -281,7 +281,8 @@ class Product(db.Model):
     purchases = db.relationship('Purchase', backref='product', lazy=True, cascade='all, delete-orphan', order_by='desc(Purchase.purchase_date)')
     usages = db.relationship('Usage', backref='product', lazy=True, cascade='all, delete-orphan', order_by='desc(Usage.usage_date)')
     stock_movements = db.relationship(
-        'StockMovement', backref='product', lazy=True, cascade='all, delete-orphan', order_by='desc(StockMovement.movement_date)'
+        'StockMovement', backref='product', lazy=True, cascade='all, delete-orphan',
+        order_by='desc(StockMovement.movement_date), desc(StockMovement.id)'
     )
 
     def __init__(self, **kwargs):
