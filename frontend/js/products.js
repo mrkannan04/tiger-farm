@@ -321,7 +321,11 @@ const ProductsView = {
       document.getElementById('formProduct').reset();
       document.getElementById('productEditId').value = '';
       document.getElementById('modalProductTitle').textContent = 'Add New Product';
-      document.getElementById('btnSubmitProduct').textContent = 'Save Product';
+      const submitBtn = document.getElementById('btnSubmitProduct');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Save Product';
+      }
       
       const openInputs = document.getElementById('productOpeningStockInputs');
       const openCard = document.getElementById('productOpeningStockCard');
@@ -334,7 +338,13 @@ const ProductsView = {
       if (document.getElementById('productMinStock')) document.getElementById('productMinStock').value = '5';
       if (document.getElementById('productStatusSelect')) document.getElementById('productStatusSelect').value = 'true';
 
-      updateOpeningStockCalc(false);
+      try {
+        if (typeof this.updateOpeningStockCalc === 'function') {
+          this.updateOpeningStockCalc(false);
+        } else if (typeof updateOpeningStockCalc === 'function') {
+          updateOpeningStockCalc(false);
+        }
+      } catch (_) {}
       App.openModal('modalProduct');
     });
 
@@ -351,10 +361,18 @@ const ProductsView = {
         e.preventDefault();
         const editId = document.getElementById('productEditId').value;
         const btn = document.getElementById('btnSubmitProduct');
-        btn.disabled = true;
-        btn.textContent = editId ? 'Saving Changes...' : 'Saving to Database...';
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = editId ? 'Saving Changes...' : 'Saving to Database...';
+        }
 
-        updateOpeningStockCalc();
+        try {
+          if (typeof this.updateOpeningStockCalc === 'function') {
+            this.updateOpeningStockCalc();
+          } else if (typeof updateOpeningStockCalc === 'function') {
+            updateOpeningStockCalc();
+          }
+        } catch (_) {}
 
         const payload = {
           name: document.getElementById('productName').value.trim(),
@@ -372,6 +390,9 @@ const ProductsView = {
           current_quantity: parseFloat(document.getElementById('productInitialQty')?.value) || 0,
         };
 
+        const controller = new AbortController();
+        const timeoutTimer = setTimeout(() => controller.abort(), 20000);
+
         try {
           const url = editId ? `/api/products/${editId}` : '/api/products';
           const method = editId ? 'PUT' : 'POST';
@@ -379,22 +400,39 @@ const ProductsView = {
             method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
+            signal: controller.signal,
           });
-          const data = await res.json();
+          clearTimeout(timeoutTimer);
+
+          let data = {};
+          try {
+            data = await res.json();
+          } catch (_) {
+            data = { success: false, message: `Server response error (${res.status}): ${res.statusText || 'Unknown error'}` };
+          }
+
           if (res.ok && data.success !== false) {
-            App.showToast(data.message || (editId ? 'Product changes saved successfully!' : 'Product saved successfully to database!'));
+            App.showToast(data.message || (editId ? 'Product changes saved successfully!' : 'Product saved successfully!'));
+            // Close modal IMMEDIATELY for responsive UX
             App.closeModal('modalProduct');
-            await App.loadMetadata();
+            // Refresh table list immediately
             ProductsView.fetchAndRenderList();
+            // Background metadata refresh without blocking UI
+            App.loadMetadata().catch(() => {});
           } else {
             const err = data.message || data.error || 'Unable to save product. Please try again.';
             App.showToast(err, 'error');
           }
         } catch (err) {
-          App.showToast('Unable to save product. Please try again: ' + err.message, 'error');
+          clearTimeout(timeoutTimer);
+          const isTimeout = err.name === 'AbortError';
+          const msg = isTimeout ? 'Request timed out after 20s. Please verify your connection or refresh.' : err.message;
+          App.showToast('Unable to save product: ' + msg, 'error');
         } finally {
-          btn.disabled = false;
-          btn.textContent = editId ? 'Save Changes' : 'Save Product';
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = editId ? 'Save Changes' : 'Save Product';
+          }
         }
       });
     }
@@ -544,6 +582,10 @@ const ProductsView = {
     container.querySelectorAll('.btn-edit-product').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
+        const origHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '⏳';
+
         try {
           const res = await fetch(`/api/products/${id}`);
           if (!res.ok) throw new Error('Could not fetch details from database');
@@ -552,7 +594,11 @@ const ProductsView = {
 
           document.getElementById('productEditId').value = p.id;
           document.getElementById('modalProductTitle').textContent = `Edit "${p.name}"`;
-          document.getElementById('btnSubmitProduct').textContent = 'Save Changes';
+          const submitBtn = document.getElementById('btnSubmitProduct');
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save Changes';
+          }
           document.getElementById('productName').value = p.name;
 
           // Ensure category dropdown is populated and selected
@@ -637,16 +683,24 @@ const ProductsView = {
               bagIn.value = p.current_quantity || 0;
             }
           }
-          if (typeof this.updateOpeningStockCalc === 'function') {
-            this.updateOpeningStockCalc(true);
-          } else if (typeof window.updateOpeningStockCalc === 'function') {
-            window.updateOpeningStockCalc(true);
-          } else if (typeof updateOpeningStockCalc === 'function') {
-            updateOpeningStockCalc(true);
+          if (looseIn) {
+            looseIn.value = (p.loose_stock !== undefined && p.loose_stock !== null) ? p.loose_stock : 0;
           }
+          try {
+            if (typeof this.updateOpeningStockCalc === 'function') {
+              this.updateOpeningStockCalc(true);
+            } else if (typeof window.updateOpeningStockCalc === 'function') {
+              window.updateOpeningStockCalc(true);
+            } else if (typeof updateOpeningStockCalc === 'function') {
+              updateOpeningStockCalc(true);
+            }
+          } catch (_) {}
           App.openModal('modalProduct');
         } catch (err) {
           App.showToast(err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = origHtml;
         }
       });
     });

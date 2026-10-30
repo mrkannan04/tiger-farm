@@ -370,7 +370,7 @@ def update_product(product_id):
                 is_discrete = (pkg_type.lower() in ('bag', 'bottle', 'pouch', 'container', 'drum', 'box')) and (pkg_size is not None and pkg_size > 0)
 
                 # Recreate discrete package stocks for updated stock levels
-                ProductPackageStock.query.filter_by(product_id=product.id).delete()
+                ProductPackageStock.query.filter_by(product_id=product.id).delete(synchronize_session=False)
 
                 if is_discrete and bag_qty > 0:
                     pkg_mult = pkg_size
