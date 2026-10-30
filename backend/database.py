@@ -200,7 +200,9 @@ def _seed_defaults():
         (2.5, 'kg', 'Bag', 'kg', 2.5),
         (5.0, 'kg', 'Bag', 'kg', 5.0),
         (10.0, 'kg', 'Bag', 'kg', 10.0),
+        (20.0, 'kg', 'Bag', 'kg', 20.0),
         (25.0, 'kg', 'Bag', 'kg', 25.0),
+        (40.0, 'kg', 'Bag', 'kg', 40.0),
         (45.0, 'kg', 'Bag', 'kg', 45.0),
         (50.0, 'kg', 'Bag', 'kg', 50.0),
         # Pouch weight sizes
@@ -229,6 +231,7 @@ def _seed_defaults():
     # Loose packages
     loose_packages = [
         (1.0, 'KG', 'Loose', 'kg', 1.0),
+        (1.0, 'g', 'Loose', 'kg', 0.001),
         (1.0, 'L', 'Loose', 'L', 1.0),
     ]
 

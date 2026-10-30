@@ -99,51 +99,110 @@ def create_product():
         return jsonify({'success': False, 'message': msg, 'error': msg, 'existing_id': existing.id}), 409
 
     try:
+        unit_id = data.get('unit_id')
+        if not unit_id:
+            sym = (data.get('default_package_unit') or 'kg').strip().lower()
+            if sym in ['l', 'ml']:
+                u = Unit.query.filter(db.func.lower(Unit.symbol) == 'l').first()
+            elif sym in ['g', 'gm']:
+                u = Unit.query.filter(db.func.lower(Unit.symbol).in_(['kg', 'gm', 'g'])).first()
+            else:
+                u = Unit.query.filter(db.func.lower(Unit.symbol) == 'kg').first()
+            if not u:
+                u = Unit.query.first()
+            unit_id = u.id if u else 1
+        else:
+            unit_id = int(unit_id)
+
         init_qty = float(data.get('current_quantity', 0))
         min_stock = float(data.get('minimum_stock', 0))
         pkg_type = data.get('default_packaging_type', 'Bag')
         pkg_size = float(data['default_package_size']) if data.get('default_package_size') not in (None, '') else None
-        pkg_unit = data.get('default_package_unit')
+        pkg_unit = data.get('default_package_unit') or 'kg'
         pkg_count = float(data.get('default_package_count', 1.0)) if data.get('default_package_count') not in (None, '') else 1.0
+
+        # Read discrete bag quantity and loose quantity (Sections 6-9, 18)
+        bag_qty = float(data.get('bag_quantity', pkg_count if pkg_count is not None else 0.0))
+        loose_qty = float(data.get('loose_quantity', 0.0))
+
+        if (pkg_type or '').lower() == 'loose':
+            bag_qty = 0.0
+            bag_weight = 0.0
+            total_opening_stock = loose_qty if loose_qty > 0 else init_qty
+            pkg_size = 1.0
+            pkg_count = total_opening_stock
+        else:
+            mult = PackageMaster.compute_multiplier(pkg_size or 1.0, pkg_unit)
+            bag_weight = round(bag_qty * mult, 4) if (pkg_size and bag_qty > 0) else 0.0
+            total_opening_stock = round(bag_weight + loose_qty, 4)
+            if total_opening_stock <= 0 and init_qty > 0:
+                total_opening_stock = init_qty
 
         product = Product(
             name=clean_name,
             category_id=int(data['category_id']),
-            unit_id=int(data['unit_id']),
-            current_quantity=init_qty,
+            unit_id=unit_id,
+            current_quantity=total_opening_stock,
             minimum_stock=min_stock,
             description=(data.get('description') or '').strip() or None,
             is_active=True,
             default_packaging_type=pkg_type,
             default_package_size=pkg_size,
             default_package_unit=pkg_unit,
-            default_package_count=pkg_count,
+            default_package_count=bag_qty if bag_qty > 0 else pkg_count,
         )
         db.session.add(product)
         db.session.flush()
 
-        # If default package size specified, create corresponding ProductPackageStock
-        if pkg_size and pkg_size > 0:
-            c = pkg_count if pkg_count and pkg_count > 0 else 1.0
-            tot = round(c * pkg_size, 4)
+        base_sym = product.unit.symbol if product.unit else 'kg'
+
+        # Create bag ProductPackageStock
+        if (pkg_type or '').lower() != 'loose' and pkg_size and pkg_size > 0:
             db.session.add(ProductPackageStock(
                 product_id=product.id,
                 packaging_type=pkg_type or 'Bag',
                 package_size=pkg_size,
-                unit_symbol=pkg_unit or (product.unit.symbol if product.unit else 'kg'),
-                package_count=c,
-                total_quantity=tot,
+                unit_symbol=pkg_unit,
+                package_count=bag_qty,
+                total_quantity=bag_weight,
             ))
 
-        # If opening quantity > 0, record ledger opening balance
+        # Create loose ProductPackageStock if loose stock > 0
+        if loose_qty > 0 or (pkg_type or '').lower() == 'loose':
+            loose_c = total_opening_stock if (pkg_type or '').lower() == 'loose' else loose_qty
+            db.session.add(ProductPackageStock(
+                product_id=product.id,
+                packaging_type='Loose',
+                package_size=1.0,
+                unit_symbol=base_sym,
+                package_count=loose_c,
+                total_quantity=loose_c,
+            ))
+
+        # If opening quantity > 0, record ledger opening balance (Sections 7, 8, 9)
         if product.current_quantity > 0:
+            if (pkg_type or '').lower() == 'loose':
+                pkg_summary = f"{product.current_quantity:g} {base_sym} Loose"
+            elif bag_qty > 0 and loose_qty > 0 and pkg_size:
+                noun = f"{pkg_type}s" if bag_qty != 1 else pkg_type
+                pkg_summary = f"{bag_qty:g} × {pkg_size:g} {pkg_unit} {noun} = {bag_weight:g} {base_sym} + Loose: {loose_qty:g} {base_sym} = {total_opening_stock:g} {base_sym}"
+            elif bag_qty > 0 and pkg_size:
+                noun = f"{pkg_type}s" if bag_qty != 1 else pkg_type
+                pkg_summary = f"{bag_qty:g} × {pkg_size:g} {pkg_unit} {noun} = {bag_weight:g} {base_sym}"
+            elif loose_qty > 0:
+                pkg_summary = f"{loose_qty:g} {base_sym} Loose"
+            else:
+                pkg_summary = f"{product.current_quantity:g} {base_sym}"
+
             db.session.add(StockMovement(
                 product_id=product.id,
                 movement_type='INITIAL',
                 quantity=product.current_quantity,
                 balance_after=product.current_quantity,
                 movement_date=date.today(),
-                remarks='Opening stock balance upon product creation',
+                packaging_type=pkg_type,
+                package_summary=pkg_summary,
+                remarks=f'Opening stock balance upon product creation ({pkg_summary})',
             ))
 
         db.session.add(ActivityLog(

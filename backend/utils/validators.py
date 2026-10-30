@@ -13,8 +13,24 @@ def validate_product(data):
     if not data.get('category_id'):
         errors['category_id'] = 'Category is required.'
 
-    if not data.get('unit_id'):
+    if not data.get('unit_id') and not data.get('unit_package') and not data.get('default_package_unit'):
         errors['unit_id'] = 'Unit is required.'
+
+    bag_qty = data.get('bag_quantity')
+    if bag_qty is not None and str(bag_qty).strip() != '':
+        try:
+            if float(bag_qty) < 0:
+                errors['bag_quantity'] = 'Bag quantity cannot be negative.'
+        except (TypeError, ValueError):
+            errors['bag_quantity'] = 'Please enter a valid bag quantity.'
+
+    loose_qty = data.get('loose_quantity')
+    if loose_qty is not None and str(loose_qty).strip() != '':
+        try:
+            if float(loose_qty) < 0:
+                errors['loose_quantity'] = 'Loose quantity cannot be negative.'
+        except (TypeError, ValueError):
+            errors['loose_quantity'] = 'Please enter a valid loose quantity.'
 
     qty = data.get('current_quantity', 0)
     try:

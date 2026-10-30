@@ -118,6 +118,7 @@ def create_purchase():
         package_size=float(data['package_size']) if data.get('package_size') else None,
         package_unit=data.get('package_unit'),
         package_count=float(data['package_count']) if data.get('package_count') else None,
+        loose_quantity=float(data['loose_quantity']) if (data.get('loose_quantity') not in (None, '') and str(data.get('loose_quantity')).strip() != '') else None,
     )
 
     if error:

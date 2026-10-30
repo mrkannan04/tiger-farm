@@ -195,7 +195,7 @@ class PackageMaster(db.Model):
 
 
 class ProductPackageStock(db.Model):
-    """Product stock broken down by packaging type and package size."""
+    """Product stock broken down by packaging type and package size (Section 12)."""
     __tablename__ = 'product_package_stocks'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -203,15 +203,31 @@ class ProductPackageStock(db.Model):
     packaging_type = db.Column(db.String(50), nullable=False)   # Bag, Bottle, Loose, etc.
     package_size = db.Column(db.Float, nullable=False, default=1.0)
     unit_symbol = db.Column(db.String(20), nullable=False, default='kg')
-    package_count = db.Column(db.Float, nullable=False, default=0.0)  # e.g. 5 bags
+    package_count = db.Column(db.Float, nullable=False, default=0.0)  # e.g. 5 bags or 5 kg loose
     total_quantity = db.Column(db.Float, nullable=False, default=0.0) # e.g. 250 kg in base unit
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @property
+    def is_loose(self):
+        return (self.packaging_type or '').lower() == 'loose'
+
+    @property
+    def bag_quantity(self):
+        return round(self.package_count, 4) if not self.is_loose else 0.0
+
+    @property
+    def loose_quantity(self):
+        return round(self.package_count, 4) if self.is_loose else 0.0
+
+    @property
+    def total_weight_kg(self):
+        return round(self.total_quantity, 4)
 
     def to_dict(self):
         size_str = f"{self.package_size:g}"
         count_str = f"{self.package_count:g}"
         tot_str = f"{round(self.total_quantity, 4):g}"
-        if (self.packaging_type or '').lower() == 'loose':
+        if self.is_loose:
             desc = f"{count_str} {self.unit_symbol} Loose"
         else:
             noun = f"{self.packaging_type}s" if self.package_count != 1 else self.packaging_type
@@ -219,12 +235,19 @@ class ProductPackageStock(db.Model):
         return {
             'id': self.id,
             'product_id': self.product_id,
+            'product_name': self.product.name if self.product else None,
+            'package_type': self.packaging_type,
             'packaging_type': self.packaging_type,
             'package_size': self.package_size,
-            'size_display': size_str,
+            'package_unit': self.unit_symbol,
             'unit_symbol': self.unit_symbol,
+            'size_display': size_str,
+            'bag_quantity': self.bag_quantity,
+            'loose_quantity': self.loose_quantity,
             'package_count': round(self.package_count, 4),
             'total_quantity': round(self.total_quantity, 4),
+            'total_weight_kg': self.total_weight_kg,
+            'is_loose': self.is_loose,
             'description': desc,
         }
 
@@ -255,10 +278,10 @@ class Product(db.Model):
         'ProductPackageStock', backref='product', lazy=True, cascade='all, delete-orphan',
         order_by='desc(ProductPackageStock.package_size)'
     )
-    purchases = db.relationship('Purchase', backref='product', lazy=True, order_by='desc(Purchase.purchase_date)')
-    usages = db.relationship('Usage', backref='product', lazy=True, order_by='desc(Usage.usage_date)')
+    purchases = db.relationship('Purchase', backref='product', lazy=True, cascade='all, delete-orphan', order_by='desc(Purchase.purchase_date)')
+    usages = db.relationship('Usage', backref='product', lazy=True, cascade='all, delete-orphan', order_by='desc(Usage.usage_date)')
     stock_movements = db.relationship(
-        'StockMovement', backref='product', lazy=True, order_by='desc(StockMovement.movement_date)'
+        'StockMovement', backref='product', lazy=True, cascade='all, delete-orphan', order_by='desc(StockMovement.movement_date)'
     )
 
     def __init__(self, **kwargs):
@@ -306,6 +329,46 @@ class Product(db.Model):
             return self.usages[0].usage_date.strftime('%d %b %Y')
         return None
 
+    @property
+    def bag_stock(self):
+        """Total number of physical bags on hand across all bag package sizes."""
+        return round(sum(ps.package_count for ps in self.package_stocks if (ps.packaging_type or '').lower() == 'bag' and ps.package_count > 0), 4)
+
+    @property
+    def loose_stock(self):
+        """Total loose quantity on hand."""
+        return round(sum(ps.package_count for ps in self.package_stocks if (ps.packaging_type or '').lower() == 'loose' and ps.package_count > 0), 4)
+
+    def get_stock_summary(self):
+        """
+        Structured stock summary table (Section 24):
+        | Stock Type | Quantity | Total KG |
+        """
+        rows = []
+        base_u = self.unit.symbol if self.unit else 'kg'
+        for ps in self.package_stocks:
+            if ps.package_count > 0 or ps.total_quantity > 0:
+                is_loose = (ps.packaging_type or '').lower() == 'loose'
+                u_sym = ps.unit_symbol.lower() if ps.unit_symbol.lower() in ('kg', 'g', 'ml') else ps.unit_symbol
+                if is_loose:
+                    rows.append({
+                        'stock_type': 'Loose' if u_sym.lower() in ('kg', 'l') else f'Loose {u_sym.upper()}',
+                        'quantity': f"{ps.package_count:g} {u_sym}",
+                        'total_kg': round(ps.total_quantity, 4),
+                        'unit': base_u,
+                        'is_loose': True,
+                    })
+                else:
+                    noun = f"{ps.packaging_type}s" if ps.package_count != 1 else ps.packaging_type
+                    rows.append({
+                        'stock_type': f"{ps.package_size:g} {u_sym} {ps.packaging_type}",
+                        'quantity': f"{ps.package_count:g} {noun}",
+                        'total_kg': round(ps.total_quantity, 4),
+                        'unit': base_u,
+                        'is_loose': False,
+                    })
+        return rows
+
     def get_package_breakdown(self):
         """Return non-zero package stock records for this product."""
         items = []
@@ -333,7 +396,10 @@ class Product(db.Model):
             'default_package_unit': self.default_package_unit or (self.unit.symbol if self.unit else 'kg'),
             'default_package_count': self.default_package_count or 1.0,
             'default_bag_summary': f"{self.default_package_size:g} {self.default_package_unit or (self.unit.symbol if self.unit else 'kg')} {self.default_packaging_type or 'Bag'}" if self.default_package_size else None,
+            'bag_stock': self.bag_stock,
+            'loose_stock': self.loose_stock,
             'package_breakdown': self.get_package_breakdown(),
+            'stock_summary': self.get_stock_summary(),
             'created_at': self.created_at.strftime('%d %b %Y') if self.created_at else None,
             'updated_at': self.updated_at.strftime('%d %b %Y') if self.updated_at else None,
         }

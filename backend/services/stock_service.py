@@ -5,13 +5,14 @@ from ..models import db, Product, StockMovement, Notification, Purchase, Usage, 
 def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
                     total_price=None, purchase_date=None, supplier_name=None,
                     invoice_number=None, remarks=None, bill_file=None,
-                    packaging_type=None, package_size=None, package_unit=None, package_count=None):
+                    packaging_type=None, package_size=None, package_unit=None, package_count=None,
+                    loose_quantity=None):
     """
     Transaction-first purchase recorder:
-    1. Validate product and compute standard quantity from packaging type + package size + count.
+    1. Validate product and compute standard quantity from packaging type + package size + count + optional loose quantity.
     2. Auto-compute total or unit price if missing.
     3. Create Purchase record with packaging details.
-    4. Update product current_quantity and ProductPackageStock breakdown.
+    4. Update product current_quantity and ProductPackageStock breakdown (separate bag & loose records).
     5. Create StockMovement record with package_summary.
     6. Commit transaction atomically.
     Returns (purchase, None) on success, or (None, error_str) on error.
@@ -33,26 +34,39 @@ def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
     p_size = float(package_size) if package_size is not None and str(package_size).strip() != '' else None
     p_unit = (package_unit or unit_sym).strip()
     p_count = float(package_count) if package_count is not None and str(package_count).strip() != '' else None
+    l_qty = float(loose_quantity) if loose_quantity is not None and str(loose_quantity).strip() != '' else 0.0
 
+    bag_weight = 0.0
     if pkg_type:
         if pkg_type.lower() == 'loose':
-            # Loose product: package_count is the quantity in base unit
+            # Loose product: package_count or l_qty is the quantity in base unit
             if quantity is None or quantity <= 0:
-                quantity = p_count if p_count and p_count > 0 else 0.0
+                quantity = p_count if (p_count and p_count > 0) else l_qty
             package_summary = f"{quantity:g} {p_unit} Loose"
             p_size = 1.0
             p_count = quantity
+            l_qty = quantity
         else:
-            # Combined Product + Package Type + Package Size + Quantity
+            # Combined Product + Package Type + Package Size + Quantity + optional Loose
+            multiplier = PackageMaster.compute_multiplier(p_size or 1.0, p_unit) if p_size else 1.0
             if p_size and p_count:
-                multiplier = PackageMaster.compute_multiplier(p_size, p_unit)
-                computed_qty = round(p_count * multiplier, 4)
+                bag_weight = round(p_count * multiplier, 4)
+                computed_qty = round(bag_weight + l_qty, 4)
                 if not quantity or quantity <= 0:
                     quantity = computed_qty
                 noun = f"{pkg_type}s" if p_count != 1 else pkg_type
-                package_summary = f"{p_count:g} {noun} × {p_size:g} {p_unit} = {quantity:g} {unit_sym}"
+                if l_qty > 0:
+                    package_summary = f"{p_count:g} {noun} × {p_size:g} {p_unit} = {bag_weight:g} {unit_sym} + Loose: {l_qty:g} {unit_sym} = {quantity:g} {unit_sym}"
+                else:
+                    package_summary = f"{p_count:g} {noun} × {p_size:g} {p_unit} = {quantity:g} {unit_sym}"
+            elif l_qty > 0:
+                quantity = l_qty
+                package_summary = f"{l_qty:g} {unit_sym} Loose"
             else:
                 package_summary = f"{quantity:g} {unit_sym}" if quantity else ""
+    elif l_qty > 0:
+        quantity = l_qty
+        package_summary = f"{l_qty:g} {unit_sym} Loose"
     else:
         package_summary = None
 
@@ -108,8 +122,9 @@ def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
         # Step 2: Increment product's overall current stock
         product.current_quantity = round(product.current_quantity + quantity, 4)
 
-        # Step 3: Update package stock breakdown
-        if pkg_type:
+        # Step 3: Update package stock breakdown (Preserve physical bags & loose stock separately)
+        if pkg_type and pkg_type.lower() != 'loose':
+            bag_tot = bag_weight if bag_weight > 0 else round((p_count or 1.0) * (p_size or 1.0), 4)
             stock_item = ProductPackageStock.query.filter(
                 ProductPackageStock.product_id == product.id,
                 db.func.lower(ProductPackageStock.packaging_type) == pkg_type.lower(),
@@ -118,16 +133,37 @@ def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
             ).first()
 
             if stock_item:
-                stock_item.package_count = round(stock_item.package_count + (p_count or quantity), 4)
-                stock_item.total_quantity = round(stock_item.total_quantity + quantity, 4)
+                stock_item.package_count = round(stock_item.package_count + (p_count or 0.0), 4)
+                stock_item.total_quantity = round(stock_item.total_quantity + bag_tot, 4)
             else:
                 db.session.add(ProductPackageStock(
                     product_id=product.id,
                     packaging_type=pkg_type,
                     package_size=p_size or 1.0,
                     unit_symbol=p_unit,
-                    package_count=round(p_count or quantity, 4),
-                    total_quantity=round(quantity, 4)
+                    package_count=round(p_count or 0.0, 4),
+                    total_quantity=round(bag_tot, 4)
+                ))
+
+        # If loose stock was entered or loose packaging was chosen, update separate Loose record
+        if l_qty > 0 or (pkg_type and pkg_type.lower() == 'loose'):
+            loose_amount = l_qty if l_qty > 0 else quantity
+            loose_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == 'loose'
+            ).first()
+
+            if loose_item:
+                loose_item.package_count = round(loose_item.package_count + loose_amount, 4)
+                loose_item.total_quantity = round(loose_item.total_quantity + loose_amount, 4)
+            else:
+                db.session.add(ProductPackageStock(
+                    product_id=product.id,
+                    packaging_type='Loose',
+                    package_size=1.0,
+                    unit_symbol=unit_sym,
+                    package_count=round(loose_amount, 4),
+                    total_quantity=round(loose_amount, 4)
                 ))
 
         # Step 4: Record ledger stock movement
@@ -222,15 +258,32 @@ def record_usage(product_id, quantity=None, unit_id=None, usage_date=None,
             f'Requested: {req_fmt} {unit_sym}.'
         )
 
-    # Check package-level stock if specific package was picked
+    # Check package-level stock if specific package was picked (Section 15, 16, 25)
     stock_item = None
-    if pkg_type and p_size is not None and p_count is not None:
-        stock_item = ProductPackageStock.query.filter(
-            ProductPackageStock.product_id == product.id,
-            db.func.lower(ProductPackageStock.packaging_type) == pkg_type.lower(),
-            ProductPackageStock.package_size == p_size,
-            db.func.lower(ProductPackageStock.unit_symbol) == p_unit.lower()
-        ).first()
+    if pkg_type:
+        if pkg_type.lower() == 'loose':
+            stock_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == 'loose'
+            ).first()
+            if stock_item and quantity > stock_item.package_count:
+                return None, (
+                    f"Insufficient Loose Stock. Available: {stock_item.package_count:g} {unit_sym}. "
+                    f"Requested: {quantity:g} {unit_sym}."
+                )
+        elif p_size is not None and p_count is not None:
+            stock_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == pkg_type.lower(),
+                ProductPackageStock.package_size == p_size,
+                db.func.lower(ProductPackageStock.unit_symbol) == p_unit.lower()
+            ).first()
+            if stock_item and p_count > stock_item.package_count:
+                noun = f"{pkg_type}s" if stock_item.package_count != 1 else pkg_type
+                return None, (
+                    f"Insufficient {p_size:g} {p_unit} {pkg_type} Stock. "
+                    f"Available: {stock_item.package_count:g} {noun}. Requested: {p_count:g} {noun}."
+                )
 
     try:
         # Step 1: Create usage record
@@ -256,7 +309,8 @@ def record_usage(product_id, quantity=None, unit_id=None, usage_date=None,
 
         # Step 3: Deduct from package stock breakdown if matching package found
         if stock_item:
-            stock_item.package_count = max(0.0, round(stock_item.package_count - p_count, 4))
+            deduct_count = (p_count if p_count is not None else quantity) if (pkg_type and pkg_type.lower() != 'loose') else quantity
+            stock_item.package_count = max(0.0, round(stock_item.package_count - deduct_count, 4))
             stock_item.total_quantity = max(0.0, round(stock_item.total_quantity - quantity, 4))
             if stock_item.package_count <= 0 and stock_item.total_quantity <= 0:
                 db.session.delete(stock_item)

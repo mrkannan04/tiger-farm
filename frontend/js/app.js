@@ -536,10 +536,13 @@ const App = {
     const pUnitPrice = document.getElementById('purchaseUnitPrice');
     const pTotalPrice = document.getElementById('purchaseTotalPrice');
 
+    const pLooseQty = document.getElementById('purchaseLooseQty');
+
     pProd?.addEventListener('change', () => this.syncPurchasePackagingUI());
     pPkgType?.addEventListener('change', () => this.syncPurchasePackagingUI());
     pPkgSize?.addEventListener('change', () => this.recalcPurchaseTotal());
     pPkgCount?.addEventListener('input', () => this.recalcPurchaseTotal());
+    pLooseQty?.addEventListener('input', () => this.recalcPurchaseTotal());
 
     if (pPkgCount && pUnitPrice) {
       pUnitPrice.addEventListener('input', () => {
@@ -682,25 +685,34 @@ const App = {
     const pkgType = pPkgType.value || 'Bag';
     const count = parseFloat(pPkgCount.value) || 0;
 
+    const looseIn = document.getElementById('purchaseLooseQty');
+    const looseQty = parseFloat(looseIn?.value) || 0;
+
     if (pkgType.toLowerCase() === 'loose') {
-      pQtyHidden.value = count;
+      const totLoose = (count > 0 ? count : looseQty);
+      pQtyHidden.value = totLoose;
       if (pPkgUnitHidden) pPkgUnitHidden.value = baseSym;
-      pCalcResult.innerHTML = `<strong>${count} ${baseSym} Loose</strong>`;
+      pCalcResult.innerHTML = `<strong>${totLoose} ${baseSym} Loose</strong>`;
     } else {
       const opt = pPkgSize.options[pPkgSize.selectedIndex];
       if (opt && opt.value) {
         const size = parseFloat(opt.value) || 0;
         const unit = opt.dataset.unit || baseSym;
         const mult = parseFloat(opt.dataset.multiplier) || size;
-        const total = Math.round(count * mult * 10000) / 10000;
-        pQtyHidden.value = total;
+        const bagTotal = Math.round(count * mult * 10000) / 10000;
+        const grandTotal = Math.round((bagTotal + looseQty) * 10000) / 10000;
+        pQtyHidden.value = grandTotal;
         if (pPkgUnitHidden) pPkgUnitHidden.value = unit;
 
         const noun = count === 1 ? pkgType : (pkgType.endsWith('s') ? pkgType : pkgType + 's');
-        pCalcResult.innerHTML = `<strong>${count} × ${size} ${unit} ${noun} = ${total} ${baseSym}</strong>`;
+        if (looseQty > 0) {
+          pCalcResult.innerHTML = `<strong>${count} × ${size} ${unit} ${noun} = ${bagTotal} ${baseSym} + ${looseQty} ${baseSym} Loose = Total Added Stock: ${grandTotal} ${baseSym}</strong>`;
+        } else {
+          pCalcResult.innerHTML = `<strong>${count} × ${size} ${unit} ${noun} = ${bagTotal} ${baseSym}</strong>`;
+        }
       } else {
-        pQtyHidden.value = 0;
-        pCalcResult.innerHTML = `<strong>0 ${baseSym}</strong>`;
+        pQtyHidden.value = looseQty;
+        pCalcResult.innerHTML = looseQty > 0 ? `<strong>${looseQty} ${baseSym} Loose</strong>` : `<strong>0 ${baseSym}</strong>`;
       }
     }
 

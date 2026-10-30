@@ -138,7 +138,7 @@ const DashboardView = {
               <tr>
                 <td>${p.purchase_date}</td>
                 <td><strong>${p.product_name}</strong></td>
-                <td>${p.quantity} ${p.unit || ''}</td>
+                <td><span class="badge badge-green" style="font-size:0.8rem;">${p.package_summary || `${p.quantity} ${p.unit || ''}`}</span></td>
                 <td>₹${(p.total_price || 0).toLocaleString('en-IN')}</td>
                 <td>${p.supplier_name || '<span style="color:var(--muted)">—</span>'}</td>
               </tr>
@@ -169,7 +169,7 @@ const DashboardView = {
               <tr>
                 <td>${u.usage_date}</td>
                 <td><strong>${u.product_name}</strong></td>
-                <td>${u.quantity} ${u.unit || ''}</td>
+                <td><span class="badge badge-amber" style="font-size:0.8rem;">${u.package_summary || `${u.quantity} ${u.unit || ''}`}</span></td>
                 <td>${u.field_location || '<span style="color:var(--muted)">General</span>'}</td>
                 <td>${u.reason || '<span style="color:var(--muted)">—</span>'}</td>
               </tr>
@@ -192,12 +192,15 @@ const DashboardView = {
       <div style="display:flex; flex-direction:column;">
         ${products.map(p => {
           const isOut = p.status === 'out_of_stock';
+          const breakdownSummary = p.bag_stock || p.loose_stock
+            ? `(${[p.bag_stock ? `${p.bag_stock} Bags` : '', p.loose_stock ? `${p.loose_stock} Loose` : ''].filter(Boolean).join(' + ')})`
+            : '';
           return `
             <div class="low-stock-item">
               <div>
                 <strong style="display:block; font-size:0.9rem;">${p.name}</strong>
                 <span style="font-size:0.8rem; color:var(--muted);">
-                  Stock: <strong style="color:${isOut ? 'var(--red)' : 'var(--amber)'};">${p.current_quantity} ${p.unit || ''}</strong> (Min: ${p.minimum_stock})
+                  Stock: <strong style="color:${isOut ? 'var(--red)' : 'var(--amber)'};">${p.current_quantity} ${p.unit || ''}</strong> ${breakdownSummary} (Min: ${p.minimum_stock})
                 </span>
               </div>
               <button class="btn btn-secondary btn-sm btn-quick-reorder" data-prod-id="${p.id}" data-prod-name="${p.name}">

@@ -226,9 +226,25 @@
             <input type="number" step="any" min="0.01" id="purchasePkgCount" name="package_count" required placeholder="e.g. 5" />
           </div>
 
+          <div class="form-group" id="purchaseLooseGroup">
+            <label for="purchaseLooseQty">Loose Quantity (Optional)</label>
+            <input type="number" step="any" min="0" id="purchaseLooseQty" name="loose_quantity" value="0" placeholder="0" />
+            <div class="form-hint">Additional loose kg / L to stock</div>
+          </div>
+        </div>
+
+        <div class="form-row">
           <div class="form-group">
             <label for="purchaseUnitPrice" id="purchasePriceLabel">Unit Price (₹ per Bag)</label>
             <input type="number" step="any" min="0" id="purchaseUnitPrice" name="unit_price" placeholder="Rate per unit" />
+          </div>
+          <div class="form-group">
+            <label for="purchaseTotalPrice">Total Purchase Cost (₹)</label>
+            <input type="number" step="any" min="0" id="purchaseTotalPrice" name="total_price" placeholder="Auto calculated" />
+          </div>
+          <div class="form-group">
+            <label for="purchaseDate">Purchase Date *</label>
+            <input type="date" id="purchaseDate" name="purchase_date" required />
           </div>
         </div>
 
@@ -239,17 +255,6 @@
             <strong id="purchaseCalcResult">0 kg</strong>
           </div>
           <span class="calc-badge" id="purchaseCalcBadge">Total Stock Addition</span>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group">
-            <label for="purchaseTotalPrice">Total Purchase Cost (₹)</label>
-            <input type="number" step="any" min="0" id="purchaseTotalPrice" name="total_price" placeholder="Auto calculated from price & quantity" />
-          </div>
-          <div class="form-group">
-            <label for="purchaseDate">Purchase Date *</label>
-            <input type="date" id="purchaseDate" name="purchase_date" required />
-          </div>
         </div>
 
         <div class="form-row">
@@ -392,10 +397,85 @@
             </select>
           </div>
           <div class="form-group">
-            <label for="productUnit">Base Unit of Measure *</label>
-            <select id="productUnit" name="unit_id" required>
-              <option value="">Select unit...</option>
+            <label for="productUnitPackage">Unit / Package *</label>
+            <select id="productUnitPackage" name="unit_package" required>
+              <optgroup label="📦 BAG / KG PACKAGES">
+                <option value="pkg_bag_25" data-type="Bag" data-size="25" data-unit="kg" data-base="kg" data-mult="25" selected>25 kg Bag (Default)</option>
+                <option value="pkg_bag_50" data-type="Bag" data-size="50" data-unit="kg" data-base="kg" data-mult="50">50 kg Bag</option>
+                <option value="pkg_bag_45" data-type="Bag" data-size="45" data-unit="kg" data-base="kg" data-mult="45">45 kg Bag</option>
+                <option value="pkg_bag_40" data-type="Bag" data-size="40" data-unit="kg" data-base="kg" data-mult="40">40 kg Bag</option>
+                <option value="pkg_bag_20" data-type="Bag" data-size="20" data-unit="kg" data-base="kg" data-mult="20">20 kg Bag</option>
+                <option value="pkg_bag_10" data-type="Bag" data-size="10" data-unit="kg" data-base="kg" data-mult="10">10 kg Bag</option>
+                <option value="pkg_bag_5" data-type="Bag" data-size="5" data-unit="kg" data-base="kg" data-mult="5">5 kg Bag</option>
+                <option value="pkg_bag_2.5" data-type="Bag" data-size="2.5" data-unit="kg" data-base="kg" data-mult="2.5">2.5 kg Bag</option>
+                <option value="pkg_bag_2" data-type="Bag" data-size="2" data-unit="kg" data-base="kg" data-mult="2">2 kg Bag</option>
+                <option value="pkg_bag_1" data-type="Bag" data-size="1" data-unit="kg" data-base="kg" data-mult="1">1 kg Bag</option>
+                <option value="pkg_bag_500g" data-type="Bag" data-size="500" data-unit="g" data-base="kg" data-mult="0.5">500 g Bag</option>
+                <option value="pkg_bag_250g" data-type="Bag" data-size="250" data-unit="g" data-base="kg" data-mult="0.25">250 g Bag</option>
+                <option value="pkg_loose_kg" data-type="Loose" data-size="1" data-unit="kg" data-base="kg" data-mult="1">Loose KG</option>
+              </optgroup>
+              <optgroup label="💧 LIQUID PACKAGES">
+                <option value="pkg_btl_2l" data-type="Bottle" data-size="2" data-unit="L" data-base="L" data-mult="2">2 L Bottle</option>
+                <option value="pkg_btl_1l" data-type="Bottle" data-size="1" data-unit="L" data-base="L" data-mult="1">1 L Bottle</option>
+                <option value="pkg_btl_500ml" data-type="Bottle" data-size="500" data-unit="ml" data-base="L" data-mult="0.5">500 ml Bottle</option>
+                <option value="pkg_btl_250ml" data-type="Bottle" data-size="250" data-unit="ml" data-base="L" data-mult="0.25">250 ml Bottle</option>
+                <option value="pkg_btl_3l" data-type="Bottle" data-size="3" data-unit="L" data-base="L" data-mult="3">3 L Bottle</option>
+                <option value="pkg_btl_4l" data-type="Bottle" data-size="4" data-unit="L" data-base="L" data-mult="4">4 L Bottle</option>
+                <option value="pkg_btl_5l" data-type="Bottle" data-size="5" data-unit="L" data-base="L" data-mult="5">5 L Bottle</option>
+                <option value="pkg_btl_10l" data-type="Bottle" data-size="10" data-unit="L" data-base="L" data-mult="10">10 L Bottle</option>
+                <option value="pkg_loose_l" data-type="Loose" data-size="1" data-unit="L" data-base="L" data-mult="1">Loose L</option>
+              </optgroup>
+              <optgroup label="⚖️ OTHER GENERIC UNITS">
+                <option value="gen_kg" data-type="Unit" data-size="1" data-unit="KG" data-base="kg" data-mult="1">Kilogram (KG)</option>
+                <option value="gen_gm" data-type="Unit" data-size="1" data-unit="GM" data-base="kg" data-mult="0.001">Gram (GM)</option>
+                <option value="gen_l" data-type="Unit" data-size="1" data-unit="L" data-base="L" data-mult="1">Liter (L)</option>
+                <option value="gen_mg" data-type="Unit" data-size="1" data-unit="MG" data-base="kg" data-mult="0.000001">Milligram (MG)</option>
+                <option value="gen_ml" data-type="Unit" data-size="1" data-unit="ML" data-base="L" data-mult="0.001">Milliliter (ML)</option>
+                <option value="gen_pkt" data-type="Packet" data-size="1" data-unit="Pkt" data-base="Pkt" data-mult="1">Packet (Pkt)</option>
+                <option value="gen_ton" data-type="Unit" data-size="1" data-unit="Ton" data-base="Ton" data-mult="1000">Ton (Ton)</option>
+                <option value="gen_unit" data-type="Unit" data-size="1" data-unit="Unit" data-base="Unit" data-mult="1">Unit (Unit)</option>
+                <option value="gen_box" data-type="Box" data-size="1" data-unit="Box" data-base="Box" data-mult="1">Box (Box)</option>
+                <option value="gen_btl" data-type="Bottle" data-size="1" data-unit="Btl" data-base="Btl" data-mult="1">Bottle (Btl)</option>
+                <option value="gen_bag" data-type="Bag" data-size="1" data-unit="Bag" data-base="Bag" data-mult="1">Bag (Bag)</option>
+              </optgroup>
             </select>
+          </div>
+        </div>
+
+        <div class="form-row" id="productOpeningStockInputs">
+          <div class="form-group" id="productBagQtyGroup">
+            <label for="productBagQuantity" id="productBagQuantityLabel">Bag Quantity *</label>
+            <input type="number" step="any" min="0" id="productBagQuantity" name="bag_quantity" value="1" placeholder="1" />
+            <div class="form-hint" id="productBagQtyHint">Default: 1 Bag</div>
+          </div>
+          <div class="form-group" id="productLooseQtyGroup">
+            <label for="productLooseQuantity" id="productLooseQuantityLabel">Loose Quantity (Optional)</label>
+            <input type="number" step="any" min="0" id="productLooseQuantity" name="loose_quantity" value="0" placeholder="0" />
+            <div class="form-hint" id="productLooseQtyHint">e.g. 5 kg loose stock</div>
+          </div>
+        </div>
+
+        <!-- Section 18: Opening Stock Live Breakdown Card -->
+        <div class="calculation-card" id="productOpeningStockCard" style="display:block; padding:0.9rem 1.1rem; margin-bottom:1rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; border-bottom:1px solid rgba(82,183,136,0.25); padding-bottom:0.4rem;">
+            <strong style="color:var(--green-dark); font-size:0.9rem; display:flex; align-items:center; gap:0.35rem;">
+              <span>📊</span> Opening Stock Calculation
+            </strong>
+            <span class="calc-badge" id="productOpeningBadge">Live Summary</span>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:0.35rem; font-size:0.88rem;">
+            <div id="openingBagRow" style="display:flex; justify-content:space-between;">
+              <span style="color:var(--text-mid);">Bag Stock:</span>
+              <strong id="openingBagText" style="color:var(--green-dark);">1 × 25 kg = 25 kg</strong>
+            </div>
+            <div id="openingLooseRow" style="display:flex; justify-content:space-between;">
+              <span style="color:var(--text-mid);">Loose Stock:</span>
+              <strong id="openingLooseText" style="color:var(--muted);">0 kg</strong>
+            </div>
+            <div style="border-top:1.5px dashed var(--green-mid); margin-top:0.3rem; padding-top:0.45rem; display:flex; justify-content:space-between; align-items:center;">
+              <strong style="color:var(--text); font-size:0.95rem;">TOTAL OPENING STOCK:</strong>
+              <strong id="openingTotalText" style="color:#1b4332; font-size:1.15rem; font-weight:800;">25 kg</strong>
+            </div>
           </div>
         </div>
 
@@ -414,32 +494,13 @@
           </div>
         </div>
 
-        <div class="form-row" style="background:var(--surface-sunken); padding:0.75rem; border-radius:var(--radius); margin-bottom:1rem; border:1px solid var(--border);">
-          <div class="form-group" style="margin-bottom:0;">
-            <label for="productDefaultPackagingType">Default Packaging</label>
-            <select id="productDefaultPackagingType" name="default_packaging_type">
-              <option value="Bag" selected>Bag</option>
-              <option value="Bottle">Bottle</option>
-              <option value="Pouch">Pouch</option>
-              <option value="Container">Container</option>
-              <option value="Drum">Drum</option>
-              <option value="Loose">Loose</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom:0;">
-            <label for="productDefaultPackageSize">Default Bag Size</label>
-            <input type="number" step="any" min="0.01" id="productDefaultPackageSize" name="default_package_size" placeholder="e.g. 50, 45, 25, 10, 1" />
-          </div>
-          <div class="form-group" style="margin-bottom:0;">
-            <label for="productDefaultQuantity">Default Quantity</label>
-            <input type="number" step="any" min="1" id="productDefaultQuantity" name="default_package_count" value="1" placeholder="e.g. 1" />
-          </div>
-        </div>
-
-        <div class="form-group" id="initialQtyGroup">
-          <label for="productInitialQty">Opening Stock Quantity (in Base Unit)</label>
-          <input type="number" step="any" min="0" id="productInitialQty" name="current_quantity" value="0" />
-        </div>
+        <!-- Hidden inputs for backward-compatible models & API -->
+        <input type="hidden" id="productUnit" name="unit_id" value="" />
+        <input type="hidden" id="productInitialQty" name="current_quantity" value="25" />
+        <input type="hidden" id="productDefaultPackagingType" name="default_packaging_type" value="Bag" />
+        <input type="hidden" id="productDefaultPackageSize" name="default_package_size" value="25" />
+        <input type="hidden" id="productDefaultPackageUnit" name="default_package_unit" value="kg" />
+        <input type="hidden" id="productDefaultQuantity" name="default_package_count" value="1" />
 
         <div class="form-group">
           <label for="productDesc">Description / Specification</label>

@@ -168,6 +168,30 @@ const ProductsView = {
                 </div>
               ` : '<span style="color:var(--muted); font-size:0.85rem;">Standard</span>';
 
+              // Section 10 & 11: Clear stock display showing where total comes from
+              const summaryRows = p.stock_summary || [];
+              let stockDisplayHtml = '';
+              if (summaryRows.length > 0) {
+                stockDisplayHtml = `
+                  <div style="font-size:0.82rem; line-height:1.45;">
+                    ${summaryRows.map(r => `
+                      <div style="display:flex; justify-content:space-between; gap:0.4rem; color:var(--text-mid);">
+                        <span>${r.stock_type}: <strong>${r.quantity}</strong></span>
+                        <span style="color:var(--muted); font-size:0.76rem;">= ${r.total_kg} ${r.unit}</span>
+                      </div>
+                    `).join('')}
+                    <div style="border-top:1px dashed var(--border); margin-top:0.25rem; padding-top:0.25rem; display:flex; justify-content:space-between; align-items:center;">
+                      <strong style="color:var(--green-dark); font-size:0.92rem;">Total Stock: ${p.current_quantity} ${p.unit || ''}</strong>
+                    </div>
+                  </div>
+                `;
+              } else {
+                stockDisplayHtml = `
+                  <strong style="font-size:1.05rem; color:var(--green-dark);">${p.current_quantity}</strong>
+                  <span style="font-size:0.8rem; color:var(--muted);">${p.unit || ''}</span>
+                `;
+              }
+
               return `
                 <tr style="${isAct ? '' : 'opacity:0.65; background:rgba(0,0,0,0.015);'}">
                   <td>
@@ -188,9 +212,8 @@ const ProductsView = {
                     ${bagSizeBadge}
                   </td>
                   <td>
-                    <strong style="font-size:1.05rem; color:var(--green-dark);">${p.current_quantity}</strong>
-                    <span style="font-size:0.8rem; color:var(--muted);">${p.unit || ''}</span>
-                    <div style="font-size:0.75rem; color:var(--muted);">Min: ${p.minimum_stock} ${p.unit || ''}</div>
+                    ${stockDisplayHtml}
+                    <div style="font-size:0.72rem; color:var(--muted); margin-top:0.2rem;">Min Alert: ${p.minimum_stock} ${p.unit || ''}</div>
                   </td>
                   <td>
                     ${breakdownHtml}
@@ -272,15 +295,99 @@ const ProductsView = {
       this.fetchAndRenderList();
     });
 
+    // Helper to calculate opening stock live (Section 6-9, 18)
+    const updateOpeningStockCalc = () => {
+      const sel = document.getElementById('productUnitPackage');
+      if (!sel) return;
+      const opt = sel.options[sel.selectedIndex];
+      if (!opt) return;
+
+      const pType = opt.dataset.type || 'Bag';
+      const pSize = parseFloat(opt.dataset.size) || 1.0;
+      const pUnit = opt.dataset.unit || 'kg';
+      const pBase = opt.dataset.base || 'kg';
+      const pMult = parseFloat(opt.dataset.mult) || pSize;
+
+      const bagIn = document.getElementById('productBagQuantity');
+      const looseIn = document.getElementById('productLooseQuantity');
+      const bagRow = document.getElementById('openingBagRow');
+      const bagText = document.getElementById('openingBagText');
+      const looseText = document.getElementById('openingLooseText');
+      const totalText = document.getElementById('openingTotalText');
+      const bagGroup = document.getElementById('productBagQtyGroup');
+      const looseLabel = document.getElementById('productLooseQuantityLabel');
+
+      const isLoose = pType.toLowerCase() === 'loose';
+      const bagQty = isLoose ? 0.0 : (parseFloat(bagIn?.value) || 0.0);
+      const looseQty = parseFloat(looseIn?.value) || 0.0;
+
+      if (isLoose) {
+        if (bagGroup) bagGroup.style.display = 'none';
+        if (bagRow) bagRow.style.display = 'none';
+        if (looseLabel) looseLabel.textContent = 'Loose Quantity *';
+        if (looseText) looseText.textContent = `${looseQty} ${pUnit} Loose`;
+        if (totalText) totalText.textContent = `${looseQty} ${pUnit}`;
+      } else {
+        if (bagGroup) bagGroup.style.display = 'block';
+        if (bagRow) bagRow.style.display = 'flex';
+        if (looseLabel) looseLabel.textContent = 'Loose Quantity (Optional)';
+        const bagWeight = Math.round(bagQty * pMult * 10000) / 10000;
+        const total = Math.round((bagWeight + looseQty) * 10000) / 10000;
+
+        if (bagText) bagText.textContent = `${bagQty:g} × ${pSize:g} ${pUnit} = ${bagWeight} ${pBase}`;
+        if (looseText) looseText.textContent = `${looseQty} ${pBase}`;
+        if (totalText) totalText.textContent = `${total} ${pBase}`;
+      }
+
+      // Sync hidden inputs
+      if (document.getElementById('productDefaultPackagingType')) document.getElementById('productDefaultPackagingType').value = pType;
+      if (document.getElementById('productDefaultPackageSize')) document.getElementById('productDefaultPackageSize').value = pSize;
+      if (document.getElementById('productDefaultPackageUnit')) document.getElementById('productDefaultPackageUnit').value = pUnit;
+      if (document.getElementById('productDefaultQuantity')) document.getElementById('productDefaultQuantity').value = isLoose ? looseQty : (bagQty || 1);
+      
+      const totalVal = isLoose ? looseQty : (Math.round((bagQty * pMult + looseQty) * 10000) / 10000);
+      if (document.getElementById('productInitialQty')) document.getElementById('productInitialQty').value = totalVal;
+
+      // Match unit_id
+      const uMatch = (App.state.units || []).find(u => u.symbol.toLowerCase() === pBase.toLowerCase());
+      if (uMatch && document.getElementById('productUnit')) {
+        document.getElementById('productUnit').value = uMatch.id;
+      }
+    };
+
+    const pkgSel = document.getElementById('productUnitPackage');
+    if (pkgSel && !pkgSel.dataset.bound) {
+      pkgSel.dataset.bound = 'true';
+      pkgSel.addEventListener('change', () => {
+        const isLoose = pkgSel.options[pkgSel.selectedIndex]?.dataset.type?.toLowerCase() === 'loose';
+        const bagIn = document.getElementById('productBagQuantity');
+        if (!isLoose && bagIn && (!bagIn.value || parseFloat(bagIn.value) <= 0)) {
+          bagIn.value = '1';
+        }
+        updateOpeningStockCalc();
+      });
+      document.getElementById('productBagQuantity')?.addEventListener('input', updateOpeningStockCalc);
+      document.getElementById('productLooseQuantity')?.addEventListener('input', updateOpeningStockCalc);
+    }
+
     // Add Product Modal open
     document.getElementById('btnAddNewProduct')?.addEventListener('click', () => {
       document.getElementById('formProduct').reset();
       document.getElementById('productEditId').value = '';
       document.getElementById('modalProductTitle').textContent = 'Add New Product';
-      document.getElementById('initialQtyGroup').style.display = 'block';
-      if (document.getElementById('productDefaultPackagingType')) document.getElementById('productDefaultPackagingType').value = 'Bag';
-      if (document.getElementById('productDefaultPackageSize')) document.getElementById('productDefaultPackageSize').value = '';
-      if (document.getElementById('productDefaultQuantity')) document.getElementById('productDefaultQuantity').value = '1';
+      
+      const openInputs = document.getElementById('productOpeningStockInputs');
+      const openCard = document.getElementById('productOpeningStockCard');
+      if (openInputs) openInputs.style.display = 'flex';
+      if (openCard) openCard.style.display = 'block';
+
+      if (pkgSel) pkgSel.value = 'pkg_bag_25';
+      if (document.getElementById('productBagQuantity')) document.getElementById('productBagQuantity').value = '1';
+      if (document.getElementById('productLooseQuantity')) document.getElementById('productLooseQuantity').value = '0';
+      if (document.getElementById('productMinStock')) document.getElementById('productMinStock').value = '5';
+      if (document.getElementById('productStatusSelect')) document.getElementById('productStatusSelect').value = 'true';
+
+      updateOpeningStockCalc();
       App.openModal('modalProduct');
     });
 
@@ -300,6 +407,8 @@ const ProductsView = {
         btn.disabled = true;
         btn.textContent = 'Saving to Database...';
 
+        updateOpeningStockCalc();
+
         const payload = {
           name: document.getElementById('productName').value.trim(),
           category_id: document.getElementById('productCategory').value,
@@ -309,12 +418,12 @@ const ProductsView = {
           is_active: document.getElementById('productStatusSelect').value === 'true',
           default_packaging_type: document.getElementById('productDefaultPackagingType')?.value || 'Bag',
           default_package_size: document.getElementById('productDefaultPackageSize')?.value || null,
+          default_package_unit: document.getElementById('productDefaultPackageUnit')?.value || 'kg',
           default_package_count: document.getElementById('productDefaultQuantity')?.value || 1,
+          bag_quantity: parseFloat(document.getElementById('productBagQuantity')?.value) || 0,
+          loose_quantity: parseFloat(document.getElementById('productLooseQuantity')?.value) || 0,
+          current_quantity: parseFloat(document.getElementById('productInitialQty')?.value) || 0,
         };
-
-        if (!editId) {
-          payload.current_quantity = document.getElementById('productInitialQty').value;
-        }
 
         try {
           const url = editId ? `/api/products/${editId}` : '/api/products';
@@ -395,7 +504,28 @@ const ProductsView = {
           document.getElementById('productMinStock').value = p.minimum_stock;
           document.getElementById('productStatusSelect').value = p.is_active ? 'true' : 'false';
           document.getElementById('productDesc').value = p.description || '';
-          document.getElementById('initialQtyGroup').style.display = 'none';
+          
+          // Hide opening stock inputs in edit mode (Opening stock is set upon creation)
+          const openInputs = document.getElementById('productOpeningStockInputs');
+          const openCard = document.getElementById('productOpeningStockCard');
+          if (openInputs) openInputs.style.display = 'none';
+          if (openCard) openCard.style.display = 'none';
+
+          const pkgSel = document.getElementById('productUnitPackage');
+          if (pkgSel) {
+            // Find option matching packaging_type and size
+            let matchOpt = null;
+            for (let i = 0; i < pkgSel.options.length; i++) {
+              const opt = pkgSel.options[i];
+              if (p.default_package_size && opt.dataset.size == p.default_package_size && opt.dataset.type?.toLowerCase() === (p.default_packaging_type || 'Bag').toLowerCase()) {
+                matchOpt = opt;
+                break;
+              }
+            }
+            if (matchOpt) {
+              pkgSel.value = matchOpt.value;
+            }
+          }
 
           if (document.getElementById('productDefaultPackagingType')) {
             document.getElementById('productDefaultPackagingType').value = p.default_packaging_type || 'Bag';
@@ -496,31 +626,48 @@ const ProductsView = {
           </div>
         </div>
 
-        <!-- Section 8 & 11: Package Stock Breakdown Card -->
+        <!-- Section 24: Structured Stock Summary Table -->
         <div style="background:rgba(82,183,136,0.08); border:1.5px solid rgba(82,183,136,0.3); border-radius:var(--radius); padding:0.9rem 1.1rem; margin-bottom:1.25rem;">
           <h4 style="font-size:0.95rem; margin-bottom:0.6rem; color:var(--green-dark); display:flex; align-items:center; gap:0.4rem;">
-            <span>📦</span> Current Packages on Hand (Stock Breakdown)
+            <span>📦</span> Stock Summary (Section 24 Package & Loose Breakdown)
           </h4>
-          ${(p.package_breakdown && p.package_breakdown.length) ? `
-            <div style="display:flex; flex-direction:column; gap:0.45rem;">
-              ${p.package_breakdown.map(b => `
-                <div style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:0.5rem 0.85rem; border-radius:6px; border:1px solid var(--border);">
-                  <span>
-                    <strong style="color:var(--text);">${b.packaging_type}</strong>
-                    <span style="color:var(--muted); font-size:0.85rem;">(${b.package_size} ${b.unit_symbol})</span>
-                  </span>
-                  <span>
-                    <strong style="color:var(--green-dark);">${b.package_count} ${b.packaging_type}${b.package_count != 1 ? 's' : ''}</strong>
-                    <span style="color:var(--muted); font-size:0.85rem;">= ${b.total_quantity} ${p.unit || ''}</span>
-                  </span>
-                </div>
-              `).join('')}
-            </div>
-          ` : `
-            <div style="color:var(--text-mid); font-size:0.85rem; background:#fff; padding:0.6rem 0.85rem; border-radius:6px; border:1px solid var(--border);">
-              📦 <strong>Total Stock:</strong> ${p.current_quantity} ${p.unit || ''} (Standard Inventory)
-            </div>
-          `}
+          <div class="table-wrap" style="background:#fff; border-radius:6px; overflow:hidden; border:1px solid var(--border);">
+            <table style="width:100%; border-collapse:collapse; margin:0;">
+              <thead>
+                <tr style="background:rgba(45,106,79,0.06); text-align:left;">
+                  <th style="padding:8px 12px;">Stock Type</th>
+                  <th style="padding:8px 12px; text-align:right;">Quantity</th>
+                  <th style="padding:8px 12px; text-align:right;">Total ${p.unit || 'KG'}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${(p.stock_summary && p.stock_summary.length) ? p.stock_summary.map(r => `
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:7px 12px;">
+                      <strong>${r.stock_type}</strong>
+                    </td>
+                    <td style="padding:7px 12px; text-align:right;">
+                      <span class="badge ${r.is_loose ? 'badge-amber' : 'badge-green'}">${r.quantity}</span>
+                    </td>
+                    <td style="padding:7px 12px; text-align:right; font-weight:700; color:var(--green-dark);">
+                      ${r.total_kg} ${r.unit}
+                    </td>
+                  </tr>
+                `).join('') : `
+                  <tr style="border-bottom:1px solid var(--border);">
+                    <td style="padding:7px 12px;"><strong>Standard Inventory</strong></td>
+                    <td style="padding:7px 12px; text-align:right;">${p.current_quantity} ${p.unit || ''}</td>
+                    <td style="padding:7px 12px; text-align:right; font-weight:700; color:var(--green-dark);">${p.current_quantity} ${p.unit || ''}</td>
+                  </tr>
+                `}
+                <tr style="background:rgba(82,183,136,0.14); font-weight:800;">
+                  <td style="padding:9px 12px; color:var(--green-dark); font-size:0.95rem;">TOTAL STOCK</td>
+                  <td style="padding:9px 12px; text-align:right; color:var(--muted); font-size:0.85rem;">${p.bag_stock ? `${p.bag_stock} Bags` : ''}${p.bag_stock && p.loose_stock ? ' + ' : ''}${p.loose_stock ? `${p.loose_stock} Loose` : ''}</td>
+                  <td style="padding:9px 12px; text-align:right; color:#1b4332; font-size:1.1rem; font-weight:800;">${p.current_quantity} ${p.unit || ''}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Purchase History Table -->
