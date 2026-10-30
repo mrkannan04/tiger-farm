@@ -334,7 +334,7 @@ const ProductsView = {
         const bagWeight = Math.round(bagQty * pMult * 10000) / 10000;
         const total = Math.round((bagWeight + looseQty) * 10000) / 10000;
 
-        if (bagText) bagText.textContent = `${bagQty:g} × ${pSize:g} ${pUnit} = ${bagWeight} ${pBase}`;
+        if (bagText) bagText.textContent = `${bagQty} × ${pSize} ${pUnit} = ${bagWeight} ${pBase}`;
         if (looseText) looseText.textContent = `${looseQty} ${pBase}`;
         if (totalText) totalText.textContent = `${total} ${pBase}`;
       }
