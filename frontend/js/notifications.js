@@ -124,11 +124,17 @@ const NotificationsView = {
                 </div>
               </div>
 
-              ${isUnread ? `
-                <button class="btn btn-ghost btn-sm btn-mark-read" data-id="${n.id}" style="margin-left:0.5rem; flex-shrink:0;">
-                  Mark Read
-                </button>
-              ` : ''}
+              <div style="display:flex; gap:0.35rem; align-items:center; flex-shrink:0; margin-left:0.5rem; flex-wrap:wrap;">
+                ${n.product_id ? `
+                  <a href="https://wa.me/?text=${encodeURIComponent(`🚨 Stock Alert: ${n.title}\n${n.message}`)}" target="_blank" class="btn btn-sm" style="background:#25D366; color:#fff; border:none; padding:0.25rem 0.5rem; font-size:0.75rem;">📲 WhatsApp</a>
+                  <button class="btn btn-secondary btn-sm btn-reorder-notif" data-prod-id="${n.product_id}">+ Reorder</button>
+                ` : ''}
+                ${isUnread ? `
+                  <button class="btn btn-ghost btn-sm btn-mark-read" data-id="${n.id}">
+                    Mark Read
+                  </button>
+                ` : ''}
+              </div>
             </div>
           `;
         }).join('')}
@@ -159,6 +165,16 @@ const NotificationsView = {
         }
       });
     }
+
+    // Bind reorder button from alert
+    container.querySelectorAll('.btn-reorder-notif').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const prodId = btn.dataset.prodId;
+        if (typeof App.triggerReorderFromAlert === 'function') {
+          App.triggerReorderFromAlert(prodId);
+        }
+      });
+    });
 
     // Bind individual mark read
     container.querySelectorAll('.btn-mark-read').forEach(btn => {

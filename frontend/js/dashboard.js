@@ -26,6 +26,8 @@ const DashboardView = {
 
   renderContent(container, data) {
     const summaries = Array.isArray(data.smart_summary) ? data.smart_summary : [data.smart_summary || ''];
+    const lowStockList = data.low_stock_products || [];
+    const hasUrgentStock = lowStockList.length > 0;
 
     container.innerHTML = `
       <!-- Smart Summary Greeting -->
@@ -38,6 +40,30 @@ const DashboardView = {
           </div>
         </div>
       </div>
+
+      ${hasUrgentStock ? `
+      <!-- Immediate Urgent Low Stock Alert Banner -->
+      <div class="alert alert-error" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1.25rem; background:rgba(239, 68, 68, 0.12); border:1.5px solid var(--red); border-radius:var(--radius); padding:0.9rem 1.1rem;">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <span style="font-size:1.4rem;">🚨</span>
+          <div>
+            <strong style="color:var(--red); font-size:0.98rem; letter-spacing:0.01em;">IMMEDIATE STOCK ATTENTION REQUIRED</strong>
+            <div style="font-size:0.84rem; color:var(--text); margin-top:0.2rem;">
+              <strong>${lowStockList.length} product(s)</strong> are at or below minimum threshold: 
+              <span style="color:var(--red); font-weight:600;">${lowStockList.map(p => `${p.name} (${p.current_quantity} ${p.unit || ''})`).join(', ')}</span>.
+            </div>
+          </div>
+        </div>
+        <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-danger btn-sm btn-quick-reorder" data-prod-id="${lowStockList[0].id}" data-prod-name="${lowStockList[0].name}">
+            + Reorder ${lowStockList[0].name}
+          </button>
+          <a href="https://wa.me/?text=${encodeURIComponent(`🚨 Urgent Farm Stock Alert: The following items are low or out of stock: ${lowStockList.map(p => `${p.name} (${p.current_quantity} ${p.unit || ''} left, min: ${p.minimum_stock})`).join(', ')}. Please reorder immediately.`)}" target="_blank" class="btn btn-sm" style="background:#25D366; color:#fff; border:none; display:inline-flex; align-items:center; gap:0.3rem;">
+            📲 Share Alerts via WhatsApp
+          </a>
+        </div>
+      </div>
+      ` : ''}
 
       <!-- Stats Grid -->
       <div class="stats-grid">
@@ -189,23 +215,36 @@ const DashboardView = {
         </div>`;
     }
     return `
-      <div style="display:flex; flex-direction:column;">
+      <div style="display:flex; flex-direction:column; gap:0.6rem;">
         ${products.map(p => {
-          const isOut = p.status === 'out_of_stock';
+          const isOut = p.status === 'out_of_stock' || p.current_quantity <= 0;
+          const uSym = (p.unit || 'kg').toUpperCase();
+          const isLiquid = uSym === 'L' || uSym === 'ML';
+          const typeBadge = isLiquid ? '💧 Liter (L)' : '🌱 KG / Solid';
           const breakdownSummary = p.bag_stock || p.loose_stock
             ? `(${[p.bag_stock ? `${p.bag_stock} Bags` : '', p.loose_stock ? `${p.loose_stock} Loose` : ''].filter(Boolean).join(' + ')})`
             : '';
+          const waText = encodeURIComponent(`🚨 Immediate Stock Alert: ${p.name} is ${isOut ? 'OUT OF STOCK' : 'critically LOW'} on Tiger Farm! Current: ${p.current_quantity} ${p.unit || ''} (Min threshold: ${p.minimum_stock} ${p.unit || ''}). Please arrange reorder immediately.`);
           return `
-            <div class="low-stock-item">
+            <div class="low-stock-item" style="padding:0.65rem 0.75rem; border-radius:6px; border:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
               <div>
-                <strong style="display:block; font-size:0.9rem;">${p.name}</strong>
-                <span style="font-size:0.8rem; color:var(--muted);">
-                  Stock: <strong style="color:${isOut ? 'var(--red)' : 'var(--amber)'};">${p.current_quantity} ${p.unit || ''}</strong> ${breakdownSummary} (Min: ${p.minimum_stock})
-                </span>
+                <div style="display:flex; align-items:center; gap:0.4rem; flex-wrap:wrap;">
+                  <strong style="font-size:0.92rem;">${p.name}</strong>
+                  <span class="badge" style="font-size:0.7rem; padding:0.1rem 0.35rem; background:rgba(82,183,136,0.15); color:var(--green-dark);">${p.category || 'General'}</span>
+                  <span class="badge" style="font-size:0.7rem; padding:0.1rem 0.35rem; background:rgba(0,0,0,0.06);">${typeBadge}</span>
+                </div>
+                <div style="font-size:0.8rem; color:var(--muted); margin-top:0.2rem;">
+                  Stock: <strong style="color:${isOut ? 'var(--red)' : 'var(--amber)'};">${p.current_quantity} ${p.unit || ''}</strong> ${breakdownSummary} | Min Alert: ${p.minimum_stock} ${p.unit || ''}
+                </div>
               </div>
-              <button class="btn btn-secondary btn-sm btn-quick-reorder" data-prod-id="${p.id}" data-prod-name="${p.name}">
-                + Reorder
-              </button>
+              <div style="display:flex; gap:0.35rem; align-items:center;">
+                <a href="https://wa.me/?text=${waText}" target="_blank" class="btn btn-ghost btn-sm" style="color:#25D366; font-size:0.75rem; padding:0.25rem 0.45rem;" title="Send WhatsApp alert">
+                  📲 WhatsApp
+                </a>
+                <button class="btn btn-secondary btn-sm btn-quick-reorder" data-prod-id="${p.id}" data-prod-name="${p.name}">
+                  + Reorder
+                </button>
+              </div>
             </div>
           `;
         }).join('')}
@@ -243,20 +282,21 @@ const DashboardView = {
   },
 
   bindActionButtons(container) {
-    // Quick reorder button triggers purchase modal with that product preselected
+    // Quick reorder button triggers purchase modal with that product preselected and packaging UI fully synced
     container.querySelectorAll('.btn-quick-reorder').forEach(btn => {
       btn.addEventListener('click', () => {
         const prodId = btn.dataset.prodId;
-        document.getElementById('formPurchase').reset();
+        const form = document.getElementById('formPurchase');
+        if (form) form.reset();
         const today = new Date().toISOString().split('T')[0];
-        document.getElementById('purchaseDate').value = today;
+        const dIn = document.getElementById('purchaseDate');
+        if (dIn) dIn.value = today;
 
         const pSelect = document.getElementById('purchaseProduct');
         if (pSelect) {
           pSelect.value = prodId;
-          const opt = pSelect.options[pSelect.selectedIndex];
-          if (opt && opt.dataset.unit) {
-            document.getElementById('purchaseUnit').value = opt.dataset.unit;
+          if (typeof App.syncPurchasePackagingUI === 'function') {
+            App.syncPurchasePackagingUI(true);
           }
         }
         App.openModal('modalPurchase');

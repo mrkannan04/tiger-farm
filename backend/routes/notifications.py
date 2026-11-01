@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request, session
-from ..models import db, Notification
+from ..models import db, Notification, Product
+from ..services.stock_service import _check_and_update_notifications
 
 notifications_bp = Blueprint('notifications', __name__)
 
@@ -16,6 +17,14 @@ def list_notifications():
     if auth_err:
         return auth_err
 
+    # Auto-audit all active products so any low-stock condition is immediately detected
+    try:
+        for p in Product.query.filter_by(is_active=True).all():
+            _check_and_update_notifications(p)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
     unread_only = request.args.get('unread_only', 'false').lower() == 'true'
     page = int(request.args.get('page', 1))
     per_page = int(request.args.get('per_page', 20))
@@ -28,12 +37,16 @@ def list_notifications():
     total = query.count()
     notifications = query.offset((page - 1) * per_page).limit(per_page).all()
     unread_count = Notification.query.filter_by(is_read=False).count()
+    active_alerts = Notification.query.filter_by(is_read=False).filter(
+        Notification.type.in_(['low_stock', 'out_of_stock'])
+    ).all()
 
     return jsonify({
         'success': True,
         'notifications': [n.to_dict() for n in notifications],
         'data': [n.to_dict() for n in notifications],
         'unread_count': unread_count,
+        'urgent_alerts': [n.to_dict() for n in active_alerts],
         'total': total,
         'page': page,
         'pages': max((total + per_page - 1) // per_page, 1),
@@ -71,6 +84,22 @@ def mark_all_read():
 
 @notifications_bp.route('/api/notifications/count', methods=['GET'])
 def unread_count():
-    _require_auth()
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+    try:
+        for p in Product.query.filter_by(is_active=True).all():
+            _check_and_update_notifications(p)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
     count = Notification.query.filter_by(is_read=False).count()
-    return jsonify({'success': True, 'unread_count': count})
+    active_alerts = Notification.query.filter_by(is_read=False).filter(
+        Notification.type.in_(['low_stock', 'out_of_stock'])
+    ).all()
+    return jsonify({
+        'success': True,
+        'unread_count': count,
+        'urgent_alerts': [n.to_dict() for n in active_alerts],
+    })

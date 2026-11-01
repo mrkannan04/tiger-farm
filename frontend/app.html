@@ -201,12 +201,20 @@
           <div class="form-group">
             <label for="purchasePkgType">2. Packaging Type *</label>
             <select id="purchasePkgType" name="packaging_type" required>
-              <option value="Bag">Bag</option>
-              <option value="Bottle">Bottle</option>
-              <option value="Pouch">Pouch</option>
-              <option value="Container">Container</option>
-              <option value="Drum">Drum</option>
-              <option value="Loose">Loose</option>
+              <optgroup label="🌱 SOLID / KG PACKAGING">
+                <option value="Bag" selected>Bag (KG Packages)</option>
+                <option value="Pouch">Pouch / Packet (KG / g)</option>
+                <option value="Container">Box / Container (KG)</option>
+                <option value="Drum">Drum (KG)</option>
+                <option value="Loose">Loose / Direct Kilograms (KG)</option>
+              </optgroup>
+              <optgroup label="💧 LIQUID / LITER PACKAGING">
+                <option value="Bottle">Bottle (Liter / L / ml)</option>
+                <option value="Container">Can / Container (Liter / L)</option>
+                <option value="Drum">Drum / Barrel (Liter / L)</option>
+                <option value="Pouch">Pouch / Packet (L / ml)</option>
+                <option value="Loose">Loose / Direct Liters (L)</option>
+              </optgroup>
             </select>
           </div>
 
@@ -797,15 +805,15 @@
 </div>
 
 <!-- JavaScript Application Modules -->
-<script src="/js/app.js?v=2.2.0"></script>
-<script src="/js/dashboard.js?v=2.2.0"></script>
-<script src="/js/products.js?v=2.2.0"></script>
-<script src="/js/purchases.js?v=2.2.0"></script>
-<script src="/js/usage.js?v=2.2.0"></script>
-<script src="/js/analytics.js?v=2.2.0"></script>
-<script src="/js/notifications.js?v=2.2.0"></script>
-<script src="/js/reports.js?v=2.2.0"></script>
-<script src="/js/settings.js?v=2.2.0"></script>
+<script src="/js/app.js?v=2.3.0"></script>
+<script src="/js/dashboard.js?v=2.3.0"></script>
+<script src="/js/products.js?v=2.3.0"></script>
+<script src="/js/purchases.js?v=2.3.0"></script>
+<script src="/js/usage.js?v=2.3.0"></script>
+<script src="/js/analytics.js?v=2.3.0"></script>
+<script src="/js/notifications.js?v=2.3.0"></script>
+<script src="/js/reports.js?v=2.3.0"></script>
+<script src="/js/settings.js?v=2.3.0"></script>
 
 </body>
 </html>

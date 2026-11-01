@@ -114,11 +114,32 @@ const App = {
       if (current) sel.value = current;
     });
 
-    // Products dropdowns in modals
-    const prodOpts = '<option value="">Select product...</option>' +
-      this.state.products.map(p =>
-        `<option value="${p.id}" data-unit="${p.unit_id || ''}" data-stock="${p.current_quantity || 0}" data-symbol="${p.unit || ''}">${p.name} (Stock: ${p.current_quantity} ${p.unit || ''})</option>`
-      ).join('');
+    // Products dropdowns in modals grouped by Category & Unit (KG vs Liter)
+    const catGroups = {};
+    (this.state.categories || []).forEach(c => { catGroups[c.name] = []; });
+    catGroups['General / Other'] = [];
+
+    this.state.products.forEach(p => {
+      const cName = p.category || 'General / Other';
+      if (!catGroups[cName]) catGroups[cName] = [];
+      catGroups[cName].push(p);
+    });
+
+    let prodOpts = '<option value="">-- Select Product --</option>';
+    Object.keys(catGroups).forEach(catName => {
+      const prods = catGroups[catName];
+      if (prods.length > 0) {
+        prodOpts += `<optgroup label="🏷️ ${catName}">`;
+        prods.forEach(p => {
+          const uSym = (p.unit || 'kg').toUpperCase();
+          const isLiquid = uSym === 'L' || uSym === 'ML';
+          const typeLabel = isLiquid ? '💧 Liter' : '🌱 KG';
+          const pkgDesc = p.default_package_size ? ` (${p.default_package_size} ${p.default_package_unit || p.unit || ''} ${p.default_packaging_type || ''})` : '';
+          prodOpts += `<option value="${p.id}" data-unit="${p.unit_id || ''}" data-symbol="${p.unit || 'kg'}" data-stock="${p.current_quantity || 0}" data-category="${p.category || ''}" data-pkg-type="${p.default_packaging_type || ''}" data-pkg-size="${p.default_package_size || ''}">${p.name} [${typeLabel}${pkgDesc}] — Stock: ${p.current_quantity} ${p.unit || ''}</option>`;
+        });
+        prodOpts += '</optgroup>';
+      }
+    });
 
     const purchaseProd = document.getElementById('purchaseProduct');
     if (purchaseProd) purchaseProd.innerHTML = prodOpts;
@@ -229,12 +250,16 @@ const App = {
 
   startNotificationPoller() {
     this.fetchUnreadCount();
-    setInterval(() => this.fetchUnreadCount(), 30000); // Poll every 30s
+    setInterval(() => this.fetchUnreadCount(), 10000); // Fast 10s poll for immediate stock warnings
+    // Request browser notification permission if not yet decided
+    if ('Notification' in window && Notification.permission === 'default') {
+      setTimeout(() => Notification.requestPermission(), 3000);
+    }
   },
 
   async fetchUnreadCount() {
     try {
-      const res = await fetch('/api/notifications?unread_only=true&per_page=1');
+      const res = await fetch('/api/notifications?unread_only=true&per_page=10');
       if (res.ok) {
         const data = await res.json();
         const count = data.unread_count || 0;
@@ -249,8 +274,82 @@ const App = {
             }
           }
         });
+
+        // Trigger Immediate Stock Alerts
+        const urgentAlerts = data.urgent_alerts || (data.notifications || []).filter(n => n.type === 'low_stock' || n.type === 'out_of_stock');
+        if (urgentAlerts.length > 0) {
+          if (!this.state.seenAlertIds) this.state.seenAlertIds = new Set();
+          urgentAlerts.forEach(alert => {
+            if (!this.state.seenAlertIds.has(alert.id)) {
+              this.state.seenAlertIds.add(alert.id);
+              this.showImmediateStockAlert(alert);
+            }
+          });
+        }
       }
     } catch {}
+  },
+
+  showImmediateStockAlert(alert) {
+    const isOut = alert.type === 'out_of_stock';
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-error toast-stock-alert';
+    toast.style.cssText = `
+      background: ${isOut ? '#991b1b' : '#b45309'}; 
+      color: #fff; 
+      padding: 0.9rem 1.1rem; 
+      border-radius: 8px; 
+      box-shadow: 0 10px 25px rgba(0,0,0,0.35); 
+      border: 1.5px solid ${isOut ? '#fca5a5' : '#fcd34d'}; 
+      margin-bottom: 0.6rem; 
+      max-width: 420px;
+    `;
+    const waText = encodeURIComponent(`🚨 Tiger Farm Stock Alert: ${alert.title}\n${alert.message}\nPlease arrange stock delivery.`);
+    toast.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem;">
+        <strong style="font-size:0.92rem; display:flex; align-items:center; gap:0.35rem;">
+          <span>${isOut ? '⛔' : '⚠️'}</span> ${alert.title}
+        </strong>
+        <button style="background:none; border:none; color:#fff; font-size:1.2rem; cursor:pointer; line-height:1; opacity:0.8;" onclick="this.closest('.toast-stock-alert').remove()">&times;</button>
+      </div>
+      <div style="font-size:0.83rem; margin:0.35rem 0 0.65rem; opacity:0.95; line-height:1.35;">
+        ${alert.message}
+      </div>
+      <div style="display:flex; gap:0.4rem; justify-content:flex-end; align-items:center;">
+        <a href="https://wa.me/?text=${waText}" target="_blank" class="btn btn-sm" style="background:#25D366; color:#fff; border:none; padding:0.25rem 0.6rem; font-size:0.75rem;">📲 WhatsApp Alert</a>
+        <button class="btn btn-sm" style="background:#fff; color:#991b1b; font-weight:700; border:none; padding:0.25rem 0.65rem; font-size:0.75rem;" onclick="App.triggerReorderFromAlert(${alert.product_id}); this.closest('.toast-stock-alert').remove();">+ Reorder Now</button>
+      </div>
+    `;
+    const container = document.getElementById('toastContainer');
+    if (container) container.appendChild(toast);
+
+    // Browser Native Push Notification (Desktop & Mobile)
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try {
+        new Notification(`🚨 ${alert.title}`, {
+          body: alert.message,
+          icon: '/favicon.ico',
+        });
+      } catch (_) {}
+    }
+  },
+
+  triggerReorderFromAlert(productId) {
+    if (!productId) return;
+    const form = document.getElementById('formPurchase');
+    if (form) form.reset();
+    const today = new Date().toISOString().split('T')[0];
+    const dIn = document.getElementById('purchaseDate');
+    if (dIn) dIn.value = today;
+
+    const pSelect = document.getElementById('purchaseProduct');
+    if (pSelect) {
+      pSelect.value = productId;
+      if (typeof this.syncPurchasePackagingUI === 'function') {
+        this.syncPurchasePackagingUI(true);
+      }
+    }
+    this.openModal('modalPurchase');
   },
 
   // ── Sidebar Drawer for Mobile & Tablet ─────────────────────────────────────
@@ -594,7 +693,7 @@ const App = {
     [pkgTypeIn, pkgSizeIn, pkgUnitIn].forEach(el => el?.addEventListener('change', updatePkgPreview));
   },
 
-  syncPurchasePackagingUI() {
+  syncPurchasePackagingUI(forceDefault = false) {
     const pProd = document.getElementById('purchaseProduct');
     const pPkgType = document.getElementById('purchasePkgType');
     const pPkgSize = document.getElementById('purchasePkgSize');
@@ -609,44 +708,95 @@ const App = {
     const prodId = pProd.value;
     const prod = this.state.products.find(p => p.id == prodId);
     const baseUnit = (prod && prod.unit) ? prod.unit.toLowerCase() : 'kg';
-    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || (prod && prod.name.toLowerCase().includes('liquid')));
+    const catName = (prod && prod.category) ? prod.category.toLowerCase() : '';
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || baseUnit === 'liter' || baseUnit === 'litre' || catName.includes('liquid') || (prod && prod.name.toLowerCase().includes('liquid')));
 
     if (pUnitHidden && prod) pUnitHidden.value = prod.unit_id || '';
 
-    // If user just picked product and hasn't changed packaging type, select smart default
-    if (document.activeElement === pProd) {
-      pPkgType.value = (prod && prod.default_packaging_type) ? prod.default_packaging_type : (isLiquid ? 'Bottle' : 'Bag');
+    // Rebuild packaging type options matching this product category (Liquid vs Solid)
+    const prevType = pPkgType.value;
+    if (isLiquid) {
+      pPkgType.innerHTML = `
+        <option value="Bottle">Bottle (Liter / L / ml)</option>
+        <option value="Container">Can / Container (Liter / L)</option>
+        <option value="Drum">Drum / Barrel (Liter / L)</option>
+        <option value="Pouch">Pouch / Packet (L / ml)</option>
+        <option value="Loose">Loose / Direct Liters (L)</option>
+      `;
+    } else {
+      pPkgType.innerHTML = `
+        <option value="Bag">Bag (KG Packages)</option>
+        <option value="Pouch">Pouch / Packet (KG / g)</option>
+        <option value="Container">Box / Container (KG)</option>
+        <option value="Drum">Drum (KG)</option>
+        <option value="Loose">Loose / Direct Kilograms (KG)</option>
+      `;
     }
 
-    const selType = pPkgType.value;
+    if (forceDefault || document.activeElement === pProd || !prevType) {
+      const smartDefault = (prod && prod.default_packaging_type) ? prod.default_packaging_type : (isLiquid ? 'Bottle' : 'Bag');
+      pPkgType.value = smartDefault;
+    } else {
+      const hasPrev = Array.from(pPkgType.options).some(o => o.value.toLowerCase() === prevType.toLowerCase());
+      pPkgType.value = hasPrev ? prevType : (isLiquid ? 'Bottle' : 'Bag');
+    }
+
+    const selType = pPkgType.value || (isLiquid ? 'Bottle' : 'Bag');
 
     if (selType.toLowerCase() === 'loose') {
       if (pPkgSizeGroup) pPkgSizeGroup.style.display = 'none';
-      if (pCountLabel) pCountLabel.textContent = `4. Quantity (${prod ? prod.unit : 'KG'} Loose) *`;
-      if (pPriceLabel) pPriceLabel.textContent = `Unit Price (₹ per ${prod ? prod.unit : 'KG'})`;
-      if (pPkgUnitHidden) pPkgUnitHidden.value = prod ? prod.unit : 'kg';
+      const uLabel = isLiquid ? 'Liters (L)' : 'Kilograms (KG)';
+      if (pCountLabel) pCountLabel.textContent = `4. Quantity (${uLabel} Direct) *`;
+      if (pPriceLabel) pPriceLabel.textContent = `Unit Price (₹ per ${isLiquid ? 'Liter' : 'KG'})`;
+      if (pPkgUnitHidden) pPkgUnitHidden.value = isLiquid ? 'L' : 'kg';
     } else {
       if (pPkgSizeGroup) pPkgSizeGroup.style.display = 'block';
-      if (pCountLabel) pCountLabel.textContent = `4. Quantity (Number of ${selType}s) *`;
+      const unitTag = isLiquid ? 'L' : 'KG';
+      const noun = isLiquid ? (selType === 'Bottle' ? 'Bottles' : `${selType}s`) : (selType === 'Bag' ? 'Bags' : `${selType}s`);
+      if (pCountLabel) pCountLabel.textContent = `4. Quantity (Number of ${noun}) *`;
       if (pPriceLabel) pPriceLabel.textContent = `Unit Price (₹ per ${selType})`;
 
       // Populate package sizes for selected packaging type
-      let matching = this.state.packages.filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
+      let matching = (this.state.packages || []).filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
       if (isLiquid) {
-        const liquidMatches = matching.filter(p => ['l', 'ml'].includes(p.unit_symbol.toLowerCase()));
+        const liquidMatches = matching.filter(p => ['l', 'ml', 'litre', 'liter'].includes(p.unit_symbol.toLowerCase()));
         if (liquidMatches.length) matching = liquidMatches;
       } else {
-        const weightMatches = matching.filter(p => ['kg', 'g', 'ton'].includes(p.unit_symbol.toLowerCase()));
+        const weightMatches = matching.filter(p => ['kg', 'g', 'gm', 'ton'].includes(p.unit_symbol.toLowerCase()));
         if (weightMatches.length) matching = weightMatches;
+      }
+
+      // If no pre-configured sizes exist for this type, provide standard fallback sizes
+      if (!matching.length) {
+        if (isLiquid) {
+          matching = [
+            { package_size: 1, unit_symbol: 'L', base_multiplier: 1, packaging_type: selType, label: `1 L ${selType}` },
+            { package_size: 2, unit_symbol: 'L', base_multiplier: 2, packaging_type: selType, label: `2 L ${selType}` },
+            { package_size: 5, unit_symbol: 'L', base_multiplier: 5, packaging_type: selType, label: `5 L ${selType}` },
+            { package_size: 10, unit_symbol: 'L', base_multiplier: 10, packaging_type: selType, label: `10 L ${selType}` },
+            { package_size: 500, unit_symbol: 'ml', base_multiplier: 0.5, packaging_type: selType, label: `500 ml ${selType}` },
+            { package_size: 250, unit_symbol: 'ml', base_multiplier: 0.25, packaging_type: selType, label: `250 ml ${selType}` },
+          ];
+        } else {
+          matching = [
+            { package_size: 50, unit_symbol: 'kg', base_multiplier: 50, packaging_type: selType, label: `50 kg ${selType}` },
+            { package_size: 45, unit_symbol: 'kg', base_multiplier: 45, packaging_type: selType, label: `45 kg ${selType}` },
+            { package_size: 40, unit_symbol: 'kg', base_multiplier: 40, packaging_type: selType, label: `40 kg ${selType}` },
+            { package_size: 25, unit_symbol: 'kg', base_multiplier: 25, packaging_type: selType, label: `25 kg ${selType}` },
+            { package_size: 10, unit_symbol: 'kg', base_multiplier: 10, packaging_type: selType, label: `10 kg ${selType}` },
+            { package_size: 5, unit_symbol: 'kg', base_multiplier: 5, packaging_type: selType, label: `5 kg ${selType}` },
+            { package_size: 1, unit_symbol: 'kg', base_multiplier: 1, packaging_type: selType, label: `1 kg ${selType}` },
+          ];
+        }
       }
 
       pPkgSize.innerHTML = matching.map(p =>
         `<option value="${p.package_size}" data-unit="${p.unit_symbol}" data-multiplier="${p.base_multiplier}">${p.label || `${p.package_size} ${p.unit_symbol} ${p.packaging_type}`}</option>`
       ).join('');
 
-      // Auto select product's configured default bag size
+      // Auto select product's configured default bag/bottle size
       if (prod && prod.default_package_size) {
-        const found = matching.find(p => p.package_size == prod.default_package_size);
+        const found = matching.find(p => Math.abs(p.package_size - prod.default_package_size) < 0.001);
         if (found) {
           pPkgSize.value = found.package_size;
           if (pPkgUnitHidden) pPkgUnitHidden.value = found.unit_symbol;
@@ -657,10 +807,10 @@ const App = {
         pPkgUnitHidden.value = matching[0].unit_symbol;
       }
 
-      // Auto select default quantity (e.g. 1 Bag)
+      // Auto select default quantity (e.g. 1 Bag or default count)
       const pPkgCount = document.getElementById('purchasePkgCount');
-      if (document.activeElement === pProd && prod && prod.default_package_count && pPkgCount) {
-        pPkgCount.value = prod.default_package_count;
+      if (prod && pPkgCount && (forceDefault || document.activeElement === pProd || !pPkgCount.value)) {
+        pPkgCount.value = prod.default_package_count || 1;
       }
     }
 
