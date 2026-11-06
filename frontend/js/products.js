@@ -42,8 +42,6 @@ const ProductsView = {
           <button class="btn btn-secondary" id="btnExportProductsCsv">📥 Export CSV</button>
           <button class="btn btn-secondary" id="btnExportProductsPdf">📄 Export PDF</button>
           <button class="btn btn-secondary" id="btnStockAdjustTop">⚖️ Stock Adjustment</button>
-          <button class="btn btn-secondary" data-view="settings" data-tab="packages" title="Manage Reusable Package Sizes & Units">📦 Unit & Package Master</button>
-          <button class="btn btn-secondary" data-view="settings" data-tab="units" title="Manage Custom Measurement Units">⚖️ Units of Measure</button>
           <button class="btn btn-primary" id="btnAddNewProduct"><span>+</span> Add Product</button>
         </div>
       </div>

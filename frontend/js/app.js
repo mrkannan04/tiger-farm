@@ -408,20 +408,9 @@ const App = {
     this.state.currentView = viewName;
 
     // Update active nav link
-    const currentSettingsTab = window.SettingsView ? window.SettingsView.tab : 'packages';
     document.querySelectorAll('.sidebar .nav-link, .mobile-nav .mobile-nav-item').forEach(el => {
       if (el.dataset.view === viewName) {
-        if (viewName === 'settings') {
-          if (el.dataset.tab && el.dataset.tab === currentSettingsTab) {
-            el.classList.add('active');
-          } else if (!el.dataset.tab && !['packages', 'units'].includes(currentSettingsTab)) {
-            el.classList.add('active');
-          } else {
-            el.classList.remove('active');
-          }
-        } else {
-          el.classList.add('active');
-        }
+        el.classList.add('active');
       } else {
         el.classList.remove('active');
       }
