@@ -549,7 +549,10 @@
             </select>
           </div>
           <div class="form-group">
-            <label for="productUnitPackage">Unit / Package *</label>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label for="productUnitPackage" style="margin-bottom:0.25rem;">Unit / Package *</label>
+              <button type="button" class="btn btn-ghost btn-xs" id="btnQuickAddPackage" style="font-size:0.75rem; padding:0.15rem 0.45rem; color:var(--primary-light);" title="Add new package size or measurement unit">+ New Package Size / Unit</button>
+            </div>
             <select id="productUnitPackage" name="unit_package" required>
               <optgroup label="📦 BAG / KG PACKAGES">
                 <option value="pkg_bag_25" data-type="Bag" data-size="25" data-unit="kg" data-base="kg" data-mult="25" selected>25 kg Bag (Default)</option>
@@ -1139,15 +1142,15 @@
 </div>
 
 <!-- JavaScript Application Modules -->
-<script src="/js/app.js?v=2.4.0"></script>
-<script src="/js/dashboard.js?v=2.4.0"></script>
-<script src="/js/products.js?v=2.4.0"></script>
-<script src="/js/purchases.js?v=2.4.0"></script>
-<script src="/js/usage.js?v=2.4.0"></script>
-<script src="/js/analytics.js?v=2.4.0"></script>
-<script src="/js/notifications.js?v=2.4.0"></script>
-<script src="/js/reports.js?v=2.4.0"></script>
-<script src="/js/settings.js?v=2.4.0"></script>
+<script src="/js/app.js?v=2.5.0"></script>
+<script src="/js/dashboard.js?v=2.5.0"></script>
+<script src="/js/products.js?v=2.5.0"></script>
+<script src="/js/purchases.js?v=2.5.0"></script>
+<script src="/js/usage.js?v=2.5.0"></script>
+<script src="/js/analytics.js?v=2.5.0"></script>
+<script src="/js/notifications.js?v=2.5.0"></script>
+<script src="/js/reports.js?v=2.5.0"></script>
+<script src="/js/settings.js?v=2.5.0"></script>
 
 </body>
 </html>

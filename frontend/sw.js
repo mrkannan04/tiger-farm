@@ -2,7 +2,7 @@
  * Tiger Farm — Offline Progressive Web App Service Worker
  */
 
-const CACHE_NAME = 'tiger-farm-v2.4.0';
+const CACHE_NAME = 'tiger-farm-v2.5.0';
 const STATIC_ASSETS = [
   '/app.html',
   '/css/style.css',

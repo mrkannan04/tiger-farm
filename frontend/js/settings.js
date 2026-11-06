@@ -198,17 +198,9 @@ const SettingsView = {
         tbody.querySelectorAll('.btn-edit-package').forEach(btn => {
           btn.addEventListener('click', () => {
             const pId = parseInt(btn.dataset.id, 10);
-            const targetPkg = packages.find(x => x.id === pId);
-            if (!targetPkg) return;
-
-            document.getElementById('modalPackageTitle').textContent = 'Edit Package Size / Unit';
-            document.getElementById('packageEditId').value = targetPkg.id;
-            document.getElementById('pkgPackagingType').value = targetPkg.packaging_type;
-            document.getElementById('pkgSize').value = targetPkg.package_size;
-            document.getElementById('pkgUnit').value = targetPkg.unit_symbol;
-            document.getElementById('pkgStatus').value = targetPkg.is_active ? 'true' : 'false';
-
-            App.openModal('modalPackage');
+            if (typeof App !== 'undefined' && App.openPackageModal) {
+              App.openPackageModal(pId);
+            }
           });
         });
 
@@ -242,11 +234,9 @@ const SettingsView = {
       searchInput.addEventListener('input', renderRows);
 
       document.getElementById('btnAddPackage')?.addEventListener('click', () => {
-        document.getElementById('formPackage').reset();
-        document.getElementById('modalPackageTitle').textContent = 'Add Package Size / Unit';
-        document.getElementById('packageEditId').value = '';
-        document.getElementById('pkgStatus').value = 'true';
-        App.openModal('modalPackage');
+        if (typeof App !== 'undefined' && App.openPackageModal) {
+          App.openPackageModal();
+        }
       });
 
     } catch (err) {

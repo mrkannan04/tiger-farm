@@ -336,7 +336,12 @@ const ProductsView = {
       if (openInputs) openInputs.style.display = 'flex';
       if (openCard) openCard.style.display = 'block';
 
-      if (pkgSel) pkgSel.value = 'pkg_bag_25';
+      if (pkgSel) {
+        const defaultOpt = Array.from(pkgSel.options).find(o => 
+          (o.dataset.type || '').toLowerCase() === 'bag' && Math.abs(parseFloat(o.dataset.size) - 25) < 0.001
+        ) || pkgSel.options[0];
+        if (defaultOpt) pkgSel.value = defaultOpt.value;
+      }
       if (document.getElementById('productBagQuantity')) document.getElementById('productBagQuantity').value = '1';
       if (document.getElementById('productLooseQuantity')) document.getElementById('productLooseQuantity').value = '0';
       if (document.getElementById('productMinStock')) document.getElementById('productMinStock').value = '5';
@@ -642,17 +647,30 @@ const ProductsView = {
             const pSize = parseFloat(p.default_package_size);
             const pUnit = (p.default_package_unit || p.unit || '').toLowerCase();
 
-            // 1st pass: match by package size + packaging type
+            // 1st pass: match by package size + packaging type + unit symbol
             for (let i = 0; i < pkgSel.options.length; i++) {
               const opt = pkgSel.options[i];
               const optType = (opt.dataset.type || '').toLowerCase();
               const optSize = parseFloat(opt.dataset.size);
-              if (pSize && Math.abs(optSize - pSize) < 0.001 && optType === pType) {
+              const optUnit = (opt.dataset.unit || '').toLowerCase();
+              if (pSize && Math.abs(optSize - pSize) < 0.001 && optType === pType && (optUnit === pUnit || !pUnit)) {
                 matchOpt = opt;
                 break;
               }
             }
-            // 2nd pass: loose / direct unit matching
+            // 2nd pass: match by package size + packaging type
+            if (!matchOpt) {
+              for (let i = 0; i < pkgSel.options.length; i++) {
+                const opt = pkgSel.options[i];
+                const optType = (opt.dataset.type || '').toLowerCase();
+                const optSize = parseFloat(opt.dataset.size);
+                if (pSize && Math.abs(optSize - pSize) < 0.001 && optType === pType) {
+                  matchOpt = opt;
+                  break;
+                }
+              }
+            }
+            // 3rd pass: loose / direct unit matching
             if (!matchOpt) {
               for (let i = 0; i < pkgSel.options.length; i++) {
                 const opt = pkgSel.options[i];

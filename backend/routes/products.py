@@ -752,13 +752,22 @@ def create_package():
     base_u = data.get('base_unit') or ('L' if u_lower in ('l', 'ml', 'lt', 'liter', 'litre') else 'kg')
     multiplier = PackageMaster.compute_multiplier(size, unit_sym)
 
-    # Check duplicate
+    # Check duplicate or reactivation
     existing = PackageMaster.query.filter(
         PackageMaster.package_size == size,
         db.func.lower(PackageMaster.unit_symbol) == unit_sym.lower(),
         db.func.lower(PackageMaster.packaging_type) == pkg_type.lower(),
     ).first()
     if existing:
+        if not existing.is_active:
+            existing.is_active = True
+            db.session.commit()
+            return jsonify({
+                'success': True,
+                'message': f'Package size "{existing.label}" reactivated in Package Master.',
+                'package': existing.to_dict(),
+                'data': existing.to_dict(),
+            }), 200
         msg = f'Package size "{size:g} {unit_sym} {pkg_type}" already exists in Package Master.'
         return jsonify({'success': False, 'message': msg, 'error': msg, 'existing_id': existing.id}), 409
 
