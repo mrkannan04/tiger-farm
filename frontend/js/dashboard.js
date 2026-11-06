@@ -30,16 +30,44 @@ const DashboardView = {
     const hasUrgentStock = lowStockList.length > 0;
 
     container.innerHTML = `
-      <!-- Smart Summary Greeting -->
-      <div class="smart-summary">
-        <span class="summary-icon">💡</span>
-        <div>
-          <strong>Farm Status Overview</strong>
-          <div style="margin-top:0.25rem; opacity:0.95;">
-            ${summaries.map(s => `<div>• ${s}</div>`).join('')}
+      <!-- Smart Summary Greeting & Quick Action Bar -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1.25rem;">
+        <div class="smart-summary" style="margin-bottom:0; flex:1; min-width:280px;">
+          <span class="summary-icon">💡</span>
+          <div>
+            <strong>Farm Status Overview</strong>
+            <div style="margin-top:0.25rem; opacity:0.95;">
+              ${summaries.map(s => `<div>• ${s}</div>`).join('')}
+            </div>
           </div>
         </div>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="btnOpenDailyDigest" style="background:var(--green-dark); color:#fff; display:inline-flex; align-items:center; gap:0.4rem; font-weight:700;">
+            <span>📲</span> Daily Farm Digest
+          </button>
+          <button class="btn btn-secondary" id="btnOpenStockAdjust" style="display:inline-flex; align-items:center; gap:0.4rem; font-weight:700;">
+            <span>⚖️</span> Stock Adjustment
+          </button>
+        </div>
       </div>
+
+      ${data.expiring_count > 0 ? `
+      <!-- Batch Expiry Alert Banner -->
+      <div class="alert alert-warning" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.75rem; margin-bottom:1.25rem; background:rgba(245, 158, 11, 0.12); border:1.5px solid var(--amber); border-radius:var(--radius); padding:0.9rem 1.1rem;">
+        <div style="display:flex; align-items:center; gap:0.6rem;">
+          <span style="font-size:1.4rem;">⏳</span>
+          <div>
+            <strong style="color:var(--amber); font-size:0.98rem; letter-spacing:0.01em;">BATCH EXPIRY ALERT (${data.expiring_count} Batch${data.expiring_count > 1 ? 'es' : ''})</strong>
+            <div style="font-size:0.84rem; color:var(--text); margin-top:0.2rem;">
+              <strong>${data.expiring_count} purchase batch(es)</strong> are expiring within 30 days or already expired. Check inventory to prioritize field application or write-off.
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="App.navigate('purchases')" style="font-weight:700; color:var(--amber);">
+          View Purchases &rarr;
+        </button>
+      </div>
+      ` : ''}
 
       ${hasUrgentStock ? `
       <!-- Immediate Urgent Low Stock Alert Banner -->
@@ -81,6 +109,11 @@ const DashboardView = {
           <div class="stat-label">Month's Purchases</div>
           <div class="stat-value">₹${(data.monthly_purchase || 0).toLocaleString('en-IN')}</div>
           <div class="stat-sub">Spent this calendar month</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Pending Credit</div>
+          <div class="stat-value" style="color:#d97706;">₹${(data.total_pending_credit || 0).toLocaleString('en-IN')}</div>
+          <div class="stat-sub">Payables to suppliers</div>
         </div>
         <div class="stat-item">
           <div class="stat-label">Low Stock Items</div>
@@ -302,6 +335,22 @@ const DashboardView = {
         App.openModal('modalPurchase');
       });
     });
+
+    // Daily Farm Digest button
+    const btnDigest = container.querySelector('#btnOpenDailyDigest');
+    if (btnDigest) {
+      btnDigest.addEventListener('click', () => {
+        App.openDailyFarmDigest();
+      });
+    }
+
+    // Stock Adjustment button
+    const btnAdjust = container.querySelector('#btnOpenStockAdjust');
+    if (btnAdjust) {
+      btnAdjust.addEventListener('click', () => {
+        App.openAdjustmentModal();
+      });
+    }
   },
 };
 

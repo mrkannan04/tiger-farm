@@ -319,6 +319,24 @@ class Product(db.Model):
         return round(self.current_quantity * self.average_purchase_price, 2)
 
     @property
+    def stock_valuation(self):
+        return self.estimated_stock_value
+
+    @property
+    def formatted_stock_breakdown(self):
+        items = self.get_stock_summary()
+        if items:
+            parts = []
+            for it in items:
+                if it.get('is_loose'):
+                    parts.append(f"{it['quantity']} Loose")
+                else:
+                    parts.append(f"{it['quantity']} ({it['stock_type']})")
+            return ' • '.join(parts)
+        u = self.unit.symbol if self.unit else ''
+        return f"{self.current_quantity:g} {u}".strip()
+
+    @property
     def last_purchase_date(self):
         if self.purchases:
             return self.purchases[0].purchase_date.strftime('%d %b %Y')
@@ -339,6 +357,14 @@ class Product(db.Model):
     def loose_stock(self):
         """Total loose quantity on hand."""
         return round(sum(ps.package_count for ps in self.package_stocks if (ps.packaging_type or '').lower() == 'loose' and ps.package_count > 0), 4)
+
+    @property
+    def default_bag_summary(self):
+        if self.default_package_size:
+            u = self.default_package_unit or (self.unit.symbol if self.unit else 'kg')
+            pkg = self.default_packaging_type or 'Bag'
+            return f"{self.default_package_size:g} {u} {pkg}"
+        return None
 
     def get_stock_summary(self):
         """
@@ -430,6 +456,10 @@ class Purchase(db.Model):
     package_unit = db.Column(db.String(20), nullable=True)    # kg, g, L, ml
     package_count = db.Column(db.Float, nullable=True)        # 5 (Bags), 10 (Bottles)
     package_summary = db.Column(db.String(200), nullable=True) # "5 Bags × 50 kg = 250 kg"
+    batch_number = db.Column(db.String(50), nullable=True)
+    expiry_date = db.Column(db.Date, nullable=True)
+    payment_status = db.Column(db.String(20), default='Paid', nullable=True) # Paid, Pending Credit, Partial
+    payment_due_date = db.Column(db.Date, nullable=True)
     unit_price = db.Column(db.Float, nullable=True)
     total_price = db.Column(db.Float, nullable=True)
     purchase_date = db.Column(db.Date, nullable=False, index=True)
@@ -471,6 +501,12 @@ class Purchase(db.Model):
             'invoice_number': self.invoice_number,
             'remarks': self.remarks,
             'bill_file': self.bill_file,
+            'batch_number': self.batch_number,
+            'expiry_date': self.expiry_date.strftime('%Y-%m-%d') if self.expiry_date else None,
+            'expiry_date_formatted': self.expiry_date.strftime('%d %b %Y') if self.expiry_date else None,
+            'payment_status': self.payment_status or 'Paid',
+            'payment_due_date': self.payment_due_date.strftime('%Y-%m-%d') if self.payment_due_date else None,
+            'payment_due_date_formatted': self.payment_due_date.strftime('%d %b %Y') if self.payment_due_date else None,
             'created_at': self.created_at.strftime('%d %b %Y, %I:%M %p') if self.created_at else None,
         }
 
@@ -488,6 +524,7 @@ class Usage(db.Model):
     package_unit = db.Column(db.String(20), nullable=True)    # kg, g, L, ml
     package_count = db.Column(db.Float, nullable=True)        # 2 (Bags), 5 (Bottles)
     package_summary = db.Column(db.String(200), nullable=True) # "2 Bags × 50 kg = 100 kg"
+    crop_season = db.Column(db.String(100), nullable=True)
     usage_date = db.Column(db.Date, nullable=False, index=True)
     field_location = db.Column(db.String(150), nullable=True)
     reason = db.Column(db.String(250), nullable=True)
@@ -511,6 +548,7 @@ class Usage(db.Model):
             'package_unit': self.package_unit or (self.unit.symbol if self.unit else None),
             'package_count': self.package_count,
             'package_summary': self.package_summary,
+            'crop_season': self.crop_season,
             'usage_date': self.usage_date.strftime('%d %b %Y') if self.usage_date else None,
             'usage_date_iso': self.usage_date.isoformat() if self.usage_date else None,
             'field_location': self.field_location,

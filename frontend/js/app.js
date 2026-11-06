@@ -21,6 +21,9 @@ const App = {
 
   init() {
     this.bindEvents();
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
     this.checkAuth().then(authed => {
       if (authed) {
         this.loadMetadata();
@@ -92,6 +95,14 @@ const App = {
 
       this.populateDropdowns();
       this.setupPackagingCalculators();
+
+      // Load distinct crop seasons
+      fetch('/api/usages/seasons').then(r => r.json()).then(data => {
+        const dl = document.getElementById('cropSeasonDatalist');
+        if (dl && data.seasons) {
+          dl.innerHTML = data.seasons.map(s => `<option value="${s}">`).join('');
+        }
+      }).catch(() => {});
     } catch (e) {
       console.error('Error loading metadata from database:', e);
     }
@@ -113,6 +124,27 @@ const App = {
         this.state.units.map(u => `<option value="${u.id}">${u.name} (${u.symbol})</option>`).join('');
       if (current) sel.value = current;
     });
+
+    // Package Master modal unit dropdown (includes customized units)
+    const pkgUnitSel = document.getElementById('pkgUnit');
+    if (pkgUnitSel) {
+      const current = pkgUnitSel.value || 'kg';
+      const baseUnits = [
+        { symbol: 'kg', name: 'kg (Kilogram)' },
+        { symbol: 'g', name: 'g (Gram)' },
+        { symbol: 'L', name: 'L (Liter)' },
+        { symbol: 'ml', name: 'ml (Milliliter)' },
+        { symbol: 'Ton', name: 'Ton' },
+        { symbol: 'Unit', name: 'Unit' },
+      ];
+      (this.state.units || []).forEach(u => {
+        if (!baseUnits.some(b => b.symbol.toLowerCase() === u.symbol.toLowerCase())) {
+          baseUnits.push({ symbol: u.symbol, name: `${u.symbol} (${u.name})` });
+        }
+      });
+      pkgUnitSel.innerHTML = baseUnits.map(b => `<option value="${b.symbol}">${b.name}</option>`).join('');
+      if (current) pkgUnitSel.value = current;
+    }
 
     // Products dropdowns in modals grouped by Category & Unit (KG vs Liter)
     const catGroups = {};
@@ -147,6 +179,9 @@ const App = {
     const usageProd = document.getElementById('usageProduct');
     if (usageProd) usageProd.innerHTML = prodOpts;
 
+    const adjustProd = document.getElementById('adjustProduct');
+    if (adjustProd) adjustProd.innerHTML = prodOpts;
+
     // Supplier datalist
     const supDl = document.getElementById('supplierDatalist');
     if (supDl) {
@@ -162,12 +197,22 @@ const App = {
 
   // ── Router ─────────────────────────────────────────────────────────────────
   navigate(viewName, params = {}) {
-    window.location.hash = `#${viewName}`;
+    let hash = `#${viewName}`;
+    if (params && Object.keys(params).length > 0) {
+      const qs = new URLSearchParams(params).toString();
+      hash += `?${qs}`;
+    }
+    window.location.hash = hash;
   },
 
   handleRouting() {
-    const hash = window.location.hash.replace('#', '') || 'dashboard';
-    const [viewName] = hash.split('?');
+    const raw = window.location.hash.replace('#', '') || 'dashboard';
+    const [viewName, queryString] = raw.split('?');
+    if (viewName === 'settings' && queryString && window.SettingsView) {
+      const params = new URLSearchParams(queryString);
+      const tab = params.get('tab');
+      if (tab) window.SettingsView.tab = tab;
+    }
     this.switchView(viewName || 'dashboard');
   },
 
@@ -178,9 +223,20 @@ const App = {
     this.state.currentView = viewName;
 
     // Update active nav link
+    const currentSettingsTab = window.SettingsView ? window.SettingsView.tab : 'packages';
     document.querySelectorAll('.sidebar .nav-link, .mobile-nav .mobile-nav-item').forEach(el => {
       if (el.dataset.view === viewName) {
-        el.classList.add('active');
+        if (viewName === 'settings') {
+          if (el.dataset.tab && el.dataset.tab === currentSettingsTab) {
+            el.classList.add('active');
+          } else if (!el.dataset.tab && !['packages', 'units'].includes(currentSettingsTab)) {
+            el.classList.add('active');
+          } else {
+            el.classList.remove('active');
+          }
+        } else {
+          el.classList.add('active');
+        }
       } else {
         el.classList.remove('active');
       }
@@ -424,7 +480,12 @@ const App = {
       const navBtn = e.target.closest('[data-view]');
       if (navBtn) {
         e.preventDefault();
-        this.navigate(navBtn.dataset.view);
+        const view = navBtn.dataset.view;
+        const tab = navBtn.dataset.tab;
+        if (view === 'settings' && tab && window.SettingsView) {
+          window.SettingsView.tab = tab;
+        }
+        this.navigate(view, tab ? { tab } : {});
       }
 
       // Close modal triggers
@@ -450,6 +511,135 @@ const App = {
     ['btnLogout', 'btnMobileLogout', 'btnMobileLogoutFooter'].forEach(id => {
       const btn = document.getElementById(id);
       if (btn) btn.addEventListener('click', handleLogout);
+    });
+
+    // Helper: Offset Date for Quick Selection
+    const getOffsetDate = (daysAgo = 0) => {
+      const d = new Date();
+      d.setDate(d.getDate() - daysAgo);
+      return d.toISOString().split('T')[0];
+    };
+
+    // Quick Date chips for Purchase Modal
+    document.getElementById('btnPurchDateToday')?.addEventListener('click', () => {
+      const el = document.getElementById('purchaseDate');
+      if (el) { el.value = getOffsetDate(0); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnPurchDateYesterday')?.addEventListener('click', () => {
+      const el = document.getElementById('purchaseDate');
+      if (el) { el.value = getOffsetDate(1); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnPurchDatePrev')?.addEventListener('click', () => {
+      const el = document.getElementById('purchaseDate');
+      if (el) { el.value = getOffsetDate(2); el.style.borderColor = ''; }
+    });
+
+    // Quick Date chips for Usage Modal
+    document.getElementById('btnUsageDateToday')?.addEventListener('click', () => {
+      const el = document.getElementById('usageDate');
+      if (el) { el.value = getOffsetDate(0); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnUsageDateYesterday')?.addEventListener('click', () => {
+      const el = document.getElementById('usageDate');
+      if (el) { el.value = getOffsetDate(1); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnUsageDatePrev')?.addEventListener('click', () => {
+      const el = document.getElementById('usageDate');
+      if (el) { el.value = getOffsetDate(2); el.style.borderColor = ''; }
+    });
+
+    // Clear alert border on date change
+    ['purchaseDate', 'usageDate'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', (e) => {
+        e.target.style.borderColor = '';
+      });
+    });
+
+    // Steppers (+ / - buttons) for Purchase Quantity
+    document.getElementById('btnPurchasePlus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('purchasePkgCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(1, Math.round(cur + 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('btnPurchaseMinus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('purchasePkgCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 1;
+      inEl.value = Math.max(1, Math.round(cur - 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Steppers (+ / - buttons) for Usage Quantity
+    document.getElementById('btnUsagePlus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('usagePkgCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(1, Math.round(cur + 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('btnUsageMinus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('usagePkgCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 1;
+      inEl.value = Math.max(1, Math.round(cur - 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Steppers (+ / - buttons) for Product Bag Quantity
+    document.getElementById('btnProductBagPlus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('productBagQuantity');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(0, Math.round(cur + 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('btnProductBagMinus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('productBagQuantity');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(0, Math.round(cur - 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Steppers (+ / - buttons) for Stock Adjustment Quantity
+    document.getElementById('btnAdjustPlus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('adjustPkgCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(1, Math.round(cur + 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('btnAdjustMinus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('adjustPkgCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 1;
+      inEl.value = Math.max(1, Math.round(cur - 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Quick Date chips for Adjustment Modal
+    document.getElementById('btnAdjustDateToday')?.addEventListener('click', () => {
+      const el = document.getElementById('adjustDate');
+      if (el) { el.value = getOffsetDate(0); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnAdjustDateYesterday')?.addEventListener('click', () => {
+      const el = document.getElementById('adjustDate');
+      if (el) { el.value = getOffsetDate(1); el.style.borderColor = ''; }
+    });
+
+    // Payment status change toggle due date
+    document.getElementById('purchasePaymentStatus')?.addEventListener('change', (e) => {
+      const dueGroup = document.getElementById('purchaseDueDateGroup');
+      if (dueGroup) {
+        dueGroup.style.display = (e.target.value === 'Pending Credit' || e.target.value === 'Partial') ? 'block' : 'none';
+      }
+    });
+
+    // Price comparison on unit price input
+    document.getElementById('purchaseUnitPrice')?.addEventListener('input', () => {
+      this.recalcRateComparison();
     });
 
     // Quick Purchase button
@@ -481,11 +671,22 @@ const App = {
       });
     }
 
-    // Quick Purchase form submit — Strict database confirmation
+    // Quick Purchase form submit — Strict database confirmation & compulsory date check
     const fPurchase = document.getElementById('formPurchase');
     if (fPurchase) {
       fPurchase.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        const purchDateIn = document.getElementById('purchaseDate');
+        if (!purchDateIn || !purchDateIn.value.trim()) {
+          this.showToast('Purchase Date is compulsory! Please select the date.', 'error');
+          if (purchDateIn) {
+            purchDateIn.focus();
+            purchDateIn.style.borderColor = 'var(--red)';
+          }
+          return;
+        }
+
         const btn = document.getElementById('btnSubmitPurchase');
         btn.disabled = true;
         btn.textContent = 'Saving to Database...';
@@ -517,11 +718,22 @@ const App = {
       });
     }
 
-    // Quick Usage form submit — Strict database confirmation
+    // Quick Usage form submit — Strict database confirmation & compulsory date check
     const fUsage = document.getElementById('formUsage');
     if (fUsage) {
       fUsage.addEventListener('submit', async (e) => {
         e.preventDefault();
+
+        const usageDateIn = document.getElementById('usageDate');
+        if (!usageDateIn || !usageDateIn.value.trim()) {
+          this.showToast('Usage Date is compulsory! Please select the date.', 'error');
+          if (usageDateIn) {
+            usageDateIn.focus();
+            usageDateIn.style.borderColor = 'var(--red)';
+          }
+          return;
+        }
+
         const btn = document.getElementById('btnSubmitUsage');
         btn.disabled = true;
         btn.textContent = 'Deducting Stock...';
@@ -536,6 +748,7 @@ const App = {
           unit_id: document.getElementById('usageUnit').value,
           usage_date: document.getElementById('usageDate').value,
           field_location: document.getElementById('usageField').value,
+          crop_season: document.getElementById('usageCropSeason')?.value || '',
           reason: document.getElementById('usageReason').value,
           remarks: document.getElementById('usageRemarks').value,
         };
@@ -611,6 +824,78 @@ const App = {
       });
     }
 
+    // Stock Adjustment form submit
+    const fAdjust = document.getElementById('formAdjustment');
+    if (fAdjust) {
+      fAdjust.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const adjustDateIn = document.getElementById('adjustDate');
+        if (!adjustDateIn || !adjustDateIn.value.trim()) {
+          this.showToast('Adjustment Date is compulsory! Please select the date.', 'error');
+          if (adjustDateIn) {
+            adjustDateIn.focus();
+            adjustDateIn.style.borderColor = 'var(--red)';
+          }
+          return;
+        }
+
+        const btn = document.getElementById('btnSubmitAdjustment');
+        btn.disabled = true;
+        btn.textContent = 'Recording Adjustment...';
+
+        const payload = {
+          product_id: document.getElementById('adjustProduct').value,
+          adjustment_type: document.getElementById('adjustType').value,
+          reason: document.getElementById('adjustReason').value,
+          packaging_type: document.getElementById('adjustPkgType').value,
+          package_size: document.getElementById('adjustPkgSize').value,
+          package_unit: document.getElementById('adjustPkgUnit').value,
+          package_count: document.getElementById('adjustPkgCount').value,
+          quantity: document.getElementById('adjustQty').value,
+          adjustment_date: document.getElementById('adjustDate').value,
+          remarks: document.getElementById('adjustRemarks').value,
+        };
+
+        try {
+          const res = await fetch('/api/stock/adjust', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (res.ok && data.success !== false) {
+            this.showToast(data.message || 'Stock adjustment recorded successfully!');
+            this.closeModal('modalAdjustment');
+            await this.loadMetadata();
+            if (this.views[this.state.currentView]?.refresh) {
+              this.views[this.state.currentView].refresh();
+            }
+          } else {
+            this.showToast(data.message || data.error || 'Adjustment failed.', 'error');
+          }
+        } catch (err) {
+          this.showToast('Server error during adjustment: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Confirm Adjustment';
+        }
+      });
+    }
+
+    // Digest Modal buttons
+    document.getElementById('btnRefreshDigest')?.addEventListener('click', () => {
+      this.openDailyFarmDigest();
+    });
+    document.getElementById('btnCopyDigest')?.addEventListener('click', () => {
+      const content = document.getElementById('digestContent')?.textContent || '';
+      if (!content) return;
+      navigator.clipboard.writeText(content).then(() => {
+        this.showToast('Daily Farm Digest copied to clipboard!');
+      }).catch(() => {
+        this.showToast('Failed to copy to clipboard.', 'error');
+      });
+    });
+
     // Global Search
     const searchInput = document.getElementById('globalSearchInput');
     if (searchInput) {
@@ -637,7 +922,10 @@ const App = {
 
     const pLooseQty = document.getElementById('purchaseLooseQty');
 
-    pProd?.addEventListener('change', () => this.syncPurchasePackagingUI());
+    pProd?.addEventListener('change', () => {
+      this.syncPurchasePackagingUI();
+      this.checkLastPurchasePrice(pProd.value);
+    });
     pPkgType?.addEventListener('change', () => this.syncPurchasePackagingUI());
     pPkgSize?.addEventListener('change', () => this.recalcPurchaseTotal());
     pPkgCount?.addEventListener('input', () => this.recalcPurchaseTotal());
@@ -671,6 +959,34 @@ const App = {
     uPkgType?.addEventListener('change', () => this.syncUsagePackagingSizes());
     uPkgSize?.addEventListener('change', () => this.recalcUsageTotal());
     uPkgCount?.addEventListener('input', () => this.recalcUsageTotal());
+
+    // 3. Stock Adjustment packaging setup
+    const aProd = document.getElementById('adjustProduct');
+    const aPkgType = document.getElementById('adjustPkgType');
+    const aPkgSize = document.getElementById('adjustPkgSize');
+    const aPkgCount = document.getElementById('adjustPkgCount');
+    const aType = document.getElementById('adjustType');
+
+    aProd?.addEventListener('change', () => this.syncAdjustPackagingUI());
+    aPkgType?.addEventListener('change', () => this.syncAdjustPackagingSizes());
+    aPkgSize?.addEventListener('change', () => this.recalcAdjustTotal());
+    aPkgCount?.addEventListener('input', () => this.recalcAdjustTotal());
+    aType?.addEventListener('change', () => {
+      const badge = document.getElementById('adjustCalcBadge');
+      if (badge) {
+        if (aType.value === 'addition') {
+          badge.textContent = 'Stock Addition';
+          badge.style.background = 'var(--green-mid)';
+        } else {
+          badge.textContent = 'Stock Deduction';
+          badge.style.background = 'var(--red)';
+        }
+      }
+      this.recalcAdjustTotal();
+    });
+
+    this.initVoiceTyping();
+    this.initDosageCalculator();
 
     // 3. Package Master modal live preview setup
     const pkgTypeIn = document.getElementById('pkgPackagingType');
@@ -770,22 +1086,34 @@ const App = {
       if (!matching.length) {
         if (isLiquid) {
           matching = [
+            { package_size: 10, unit_symbol: 'ml', base_multiplier: 0.01, packaging_type: selType, label: `10 ml ${selType}` },
+            { package_size: 25, unit_symbol: 'ml', base_multiplier: 0.025, packaging_type: selType, label: `25 ml ${selType}` },
+            { package_size: 50, unit_symbol: 'ml', base_multiplier: 0.05, packaging_type: selType, label: `50 ml ${selType}` },
+            { package_size: 100, unit_symbol: 'ml', base_multiplier: 0.1, packaging_type: selType, label: `100 ml ${selType}` },
+            { package_size: 250, unit_symbol: 'ml', base_multiplier: 0.25, packaging_type: selType, label: `250 ml ${selType}` },
+            { package_size: 500, unit_symbol: 'ml', base_multiplier: 0.5, packaging_type: selType, label: `500 ml ${selType}` },
             { package_size: 1, unit_symbol: 'L', base_multiplier: 1, packaging_type: selType, label: `1 L ${selType}` },
             { package_size: 2, unit_symbol: 'L', base_multiplier: 2, packaging_type: selType, label: `2 L ${selType}` },
+            { package_size: 3, unit_symbol: 'L', base_multiplier: 3, packaging_type: selType, label: `3 L ${selType}` },
             { package_size: 5, unit_symbol: 'L', base_multiplier: 5, packaging_type: selType, label: `5 L ${selType}` },
             { package_size: 10, unit_symbol: 'L', base_multiplier: 10, packaging_type: selType, label: `10 L ${selType}` },
-            { package_size: 500, unit_symbol: 'ml', base_multiplier: 0.5, packaging_type: selType, label: `500 ml ${selType}` },
-            { package_size: 250, unit_symbol: 'ml', base_multiplier: 0.25, packaging_type: selType, label: `250 ml ${selType}` },
           ];
         } else {
           matching = [
-            { package_size: 50, unit_symbol: 'kg', base_multiplier: 50, packaging_type: selType, label: `50 kg ${selType}` },
-            { package_size: 45, unit_symbol: 'kg', base_multiplier: 45, packaging_type: selType, label: `45 kg ${selType}` },
-            { package_size: 40, unit_symbol: 'kg', base_multiplier: 40, packaging_type: selType, label: `40 kg ${selType}` },
-            { package_size: 25, unit_symbol: 'kg', base_multiplier: 25, packaging_type: selType, label: `25 kg ${selType}` },
-            { package_size: 10, unit_symbol: 'kg', base_multiplier: 10, packaging_type: selType, label: `10 kg ${selType}` },
-            { package_size: 5, unit_symbol: 'kg', base_multiplier: 5, packaging_type: selType, label: `5 kg ${selType}` },
+            { package_size: 50, unit_symbol: 'g', base_multiplier: 0.05, packaging_type: selType, label: `50 g ${selType}` },
+            { package_size: 100, unit_symbol: 'g', base_multiplier: 0.1, packaging_type: selType, label: `100 g ${selType}` },
+            { package_size: 200, unit_symbol: 'g', base_multiplier: 0.2, packaging_type: selType, label: `200 g ${selType}` },
+            { package_size: 250, unit_symbol: 'g', base_multiplier: 0.25, packaging_type: selType, label: `250 g ${selType}` },
+            { package_size: 500, unit_symbol: 'g', base_multiplier: 0.5, packaging_type: selType, label: `500 g ${selType}` },
             { package_size: 1, unit_symbol: 'kg', base_multiplier: 1, packaging_type: selType, label: `1 kg ${selType}` },
+            { package_size: 2, unit_symbol: 'kg', base_multiplier: 2, packaging_type: selType, label: `2 kg ${selType}` },
+            { package_size: 5, unit_symbol: 'kg', base_multiplier: 5, packaging_type: selType, label: `5 kg ${selType}` },
+            { package_size: 10, unit_symbol: 'kg', base_multiplier: 10, packaging_type: selType, label: `10 kg ${selType}` },
+            { package_size: 20, unit_symbol: 'kg', base_multiplier: 20, packaging_type: selType, label: `20 kg ${selType}` },
+            { package_size: 25, unit_symbol: 'kg', base_multiplier: 25, packaging_type: selType, label: `25 kg ${selType}` },
+            { package_size: 40, unit_symbol: 'kg', base_multiplier: 40, packaging_type: selType, label: `40 kg ${selType}` },
+            { package_size: 45, unit_symbol: 'kg', base_multiplier: 45, packaging_type: selType, label: `45 kg ${selType}` },
+            { package_size: 50, unit_symbol: 'kg', base_multiplier: 50, packaging_type: selType, label: `50 kg ${selType}` },
           ];
         }
       }
@@ -943,11 +1271,40 @@ const App = {
       if (!options.length) {
         let matching = this.state.packages.filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
         if (isLiquid) {
-          const liquidMatches = matching.filter(p => ['l', 'ml'].includes(p.unit_symbol.toLowerCase()));
+          const liquidMatches = matching.filter(p => ['l', 'ml', 'litre', 'liter'].includes(p.unit_symbol.toLowerCase()));
           if (liquidMatches.length) matching = liquidMatches;
         } else {
-          const weightMatches = matching.filter(p => ['kg', 'g', 'ton'].includes(p.unit_symbol.toLowerCase()));
+          const weightMatches = matching.filter(p => ['kg', 'g', 'gm', 'ton'].includes(p.unit_symbol.toLowerCase()));
           if (weightMatches.length) matching = weightMatches;
+        }
+        if (!matching.length) {
+          if (isLiquid) {
+            matching = [
+              { package_size: 10, unit_symbol: 'ml', base_multiplier: 0.01, packaging_type: selType, label: `10 ml ${selType}` },
+              { package_size: 25, unit_symbol: 'ml', base_multiplier: 0.025, packaging_type: selType, label: `25 ml ${selType}` },
+              { package_size: 50, unit_symbol: 'ml', base_multiplier: 0.05, packaging_type: selType, label: `50 ml ${selType}` },
+              { package_size: 100, unit_symbol: 'ml', base_multiplier: 0.1, packaging_type: selType, label: `100 ml ${selType}` },
+              { package_size: 250, unit_symbol: 'ml', base_multiplier: 0.25, packaging_type: selType, label: `250 ml ${selType}` },
+              { package_size: 500, unit_symbol: 'ml', base_multiplier: 0.5, packaging_type: selType, label: `500 ml ${selType}` },
+              { package_size: 1, unit_symbol: 'L', base_multiplier: 1, packaging_type: selType, label: `1 L ${selType}` },
+              { package_size: 2, unit_symbol: 'L', base_multiplier: 2, packaging_type: selType, label: `2 L ${selType}` },
+              { package_size: 5, unit_symbol: 'L', base_multiplier: 5, packaging_type: selType, label: `5 L ${selType}` },
+            ];
+          } else {
+            matching = [
+              { package_size: 50, unit_symbol: 'g', base_multiplier: 0.05, packaging_type: selType, label: `50 g ${selType}` },
+              { package_size: 100, unit_symbol: 'g', base_multiplier: 0.1, packaging_type: selType, label: `100 g ${selType}` },
+              { package_size: 200, unit_symbol: 'g', base_multiplier: 0.2, packaging_type: selType, label: `200 g ${selType}` },
+              { package_size: 250, unit_symbol: 'g', base_multiplier: 0.25, packaging_type: selType, label: `250 g ${selType}` },
+              { package_size: 500, unit_symbol: 'g', base_multiplier: 0.5, packaging_type: selType, label: `500 g ${selType}` },
+              { package_size: 1, unit_symbol: 'kg', base_multiplier: 1, packaging_type: selType, label: `1 kg ${selType}` },
+              { package_size: 2, unit_symbol: 'kg', base_multiplier: 2, packaging_type: selType, label: `2 kg ${selType}` },
+              { package_size: 5, unit_symbol: 'kg', base_multiplier: 5, packaging_type: selType, label: `5 kg ${selType}` },
+              { package_size: 10, unit_symbol: 'kg', base_multiplier: 10, packaging_type: selType, label: `10 kg ${selType}` },
+              { package_size: 25, unit_symbol: 'kg', base_multiplier: 25, packaging_type: selType, label: `25 kg ${selType}` },
+              { package_size: 50, unit_symbol: 'kg', base_multiplier: 50, packaging_type: selType, label: `50 kg ${selType}` },
+            ];
+          }
         }
         options = matching;
       }
@@ -1015,6 +1372,428 @@ const App = {
         uQtyHidden.value = 0;
         uCalcResult.innerHTML = `<strong>0 ${baseSym}</strong>`;
       }
+    }
+  },
+
+  // ── Stock Adjustment UI Sync & Calculations ──────────────────────────────
+  syncAdjustPackagingUI() {
+    const aProd = document.getElementById('adjustProduct');
+    const aStockHint = document.getElementById('adjustStockHint');
+    const aPkgType = document.getElementById('adjustPkgType');
+    const aPkgUnitHidden = document.getElementById('adjustPkgUnit');
+    const aUnitHidden = document.getElementById('adjustUnit');
+
+    if (!aProd || !aPkgType) return;
+    const prodId = aProd.value;
+    const prod = this.state.products.find(p => p.id == prodId);
+    if (!prod) {
+      if (aStockHint) aStockHint.textContent = '';
+      return;
+    }
+
+    const baseUnit = (prod.unit || 'kg').toLowerCase();
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || baseUnit === 'liter' || (prod.name || '').toLowerCase().includes('liquid'));
+
+    if (aStockHint) {
+      aStockHint.textContent = `Current Database Stock: ${prod.current_quantity} ${prod.unit || ''} (Min Threshold: ${prod.minimum_stock} ${prod.unit || ''})`;
+    }
+    if (aUnitHidden) aUnitHidden.value = prod.unit_id || '';
+
+    // Rebuild packaging types
+    if (isLiquid) {
+      aPkgType.innerHTML = `
+        <option value="Bottle" selected>Bottle (L / ml)</option>
+        <option value="Container">Container / Can (L)</option>
+        <option value="Drum">Drum (L)</option>
+        <option value="Pouch">Pouch (L / ml)</option>
+        <option value="Loose">Loose (L)</option>
+      `;
+    } else {
+      aPkgType.innerHTML = `
+        <option value="Bag" selected>Bag (kg Packages)</option>
+        <option value="Pouch">Pouch / Packet (kg / g)</option>
+        <option value="Container">Container / Box (kg)</option>
+        <option value="Drum">Drum (kg)</option>
+        <option value="Loose">Loose (kg)</option>
+      `;
+    }
+
+    if (prod.default_packaging_type) {
+      const opt = Array.from(aPkgType.options).find(o => o.value.toLowerCase() === prod.default_packaging_type.toLowerCase());
+      if (opt) aPkgType.value = opt.value;
+    }
+
+    this.syncAdjustPackagingSizes();
+  },
+
+  syncAdjustPackagingSizes() {
+    const aProd = document.getElementById('adjustProduct');
+    const aPkgType = document.getElementById('adjustPkgType');
+    const aPkgSize = document.getElementById('adjustPkgSize');
+    const aPkgSizeGroup = document.getElementById('adjustPkgSizeGroup');
+    const aPkgCountLabel = document.getElementById('adjustPkgCountLabel');
+    const aPkgUnitHidden = document.getElementById('adjustPkgUnit');
+
+    if (!aPkgType || !aPkgSize) return;
+
+    const prodId = aProd?.value;
+    const prod = this.state.products.find(p => p.id == prodId);
+    const baseUnit = (prod && prod.unit) ? prod.unit.toLowerCase() : 'kg';
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || baseUnit === 'liter' || (prod && prod.name.toLowerCase().includes('liquid')));
+    const selType = aPkgType.value || 'Bag';
+
+    if (selType.toLowerCase() === 'loose') {
+      if (aPkgSizeGroup) aPkgSizeGroup.style.display = 'none';
+      if (aPkgCountLabel) aPkgCountLabel.textContent = `Quantity to Adjust (${isLiquid ? 'Liters Direct' : 'Kilograms Direct'}) *`;
+      if (aPkgUnitHidden) aPkgUnitHidden.value = isLiquid ? 'L' : 'kg';
+    } else {
+      if (aPkgSizeGroup) aPkgSizeGroup.style.display = 'block';
+      const noun = isLiquid ? (selType === 'Bottle' ? 'Bottles' : `${selType}s`) : (selType === 'Bag' ? 'Bags' : `${selType}s`);
+      if (aPkgCountLabel) aPkgCountLabel.textContent = `Quantity to Adjust (Number of ${noun}) *`;
+
+      let matching = (this.state.packages || []).filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
+      if (isLiquid) {
+        const lMatches = matching.filter(p => ['l', 'ml', 'litre', 'liter'].includes(p.unit_symbol.toLowerCase()));
+        if (lMatches.length) matching = lMatches;
+      } else {
+        const wMatches = matching.filter(p => ['kg', 'g', 'gm', 'ton'].includes(p.unit_symbol.toLowerCase()));
+        if (wMatches.length) matching = wMatches;
+      }
+
+      if (!matching.length) {
+        matching = isLiquid
+          ? [
+              { package_size: 10, unit_symbol: 'ml', base_multiplier: 0.01, label: `10 ml ${selType}` },
+              { package_size: 25, unit_symbol: 'ml', base_multiplier: 0.025, label: `25 ml ${selType}` },
+              { package_size: 50, unit_symbol: 'ml', base_multiplier: 0.05, label: `50 ml ${selType}` },
+              { package_size: 100, unit_symbol: 'ml', base_multiplier: 0.1, label: `100 ml ${selType}` },
+              { package_size: 250, unit_symbol: 'ml', base_multiplier: 0.25, label: `250 ml ${selType}` },
+              { package_size: 500, unit_symbol: 'ml', base_multiplier: 0.5, label: `500 ml ${selType}` },
+              { package_size: 1, unit_symbol: 'L', base_multiplier: 1, label: `1 L ${selType}` },
+              { package_size: 2, unit_symbol: 'L', base_multiplier: 2, label: `2 L ${selType}` },
+              { package_size: 5, unit_symbol: 'L', base_multiplier: 5, label: `5 L ${selType}` },
+            ]
+          : [
+              { package_size: 50, unit_symbol: 'g', base_multiplier: 0.05, label: `50 g ${selType}` },
+              { package_size: 100, unit_symbol: 'g', base_multiplier: 0.1, label: `100 g ${selType}` },
+              { package_size: 200, unit_symbol: 'g', base_multiplier: 0.2, label: `200 g ${selType}` },
+              { package_size: 250, unit_symbol: 'g', base_multiplier: 0.25, label: `250 g ${selType}` },
+              { package_size: 500, unit_symbol: 'g', base_multiplier: 0.5, label: `500 g ${selType}` },
+              { package_size: 1, unit_symbol: 'kg', base_multiplier: 1, label: `1 kg ${selType}` },
+              { package_size: 2, unit_symbol: 'kg', base_multiplier: 2, label: `2 kg ${selType}` },
+              { package_size: 5, unit_symbol: 'kg', base_multiplier: 5, label: `5 kg ${selType}` },
+              { package_size: 10, unit_symbol: 'kg', base_multiplier: 10, label: `10 kg ${selType}` },
+              { package_size: 25, unit_symbol: 'kg', base_multiplier: 25, label: `25 kg ${selType}` },
+              { package_size: 50, unit_symbol: 'kg', base_multiplier: 50, label: `50 kg ${selType}` },
+            ];
+      }
+
+      aPkgSize.innerHTML = matching.map(p =>
+        `<option value="${p.package_size}" data-unit="${p.unit_symbol}" data-multiplier="${p.base_multiplier}">${p.label || `${p.package_size} ${p.unit_symbol} ${selType}`}</option>`
+      ).join('');
+
+      if (prod && prod.default_package_size) {
+        const found = matching.find(p => p.package_size == prod.default_package_size);
+        if (found) {
+          aPkgSize.value = found.package_size;
+          if (aPkgUnitHidden) aPkgUnitHidden.value = found.unit_symbol;
+        } else if (matching.length && aPkgUnitHidden) {
+          aPkgUnitHidden.value = matching[0].unit_symbol;
+        }
+      } else if (matching.length && aPkgUnitHidden) {
+        aPkgUnitHidden.value = matching[0].unit_symbol;
+      }
+    }
+
+    this.recalcAdjustTotal();
+  },
+
+  recalcAdjustTotal() {
+    const aProd = document.getElementById('adjustProduct');
+    const aPkgType = document.getElementById('adjustPkgType');
+    const aPkgSize = document.getElementById('adjustPkgSize');
+    const aPkgCount = document.getElementById('adjustPkgCount');
+    const aQtyHidden = document.getElementById('adjustQty');
+    const aPkgUnitHidden = document.getElementById('adjustPkgUnit');
+    const aCalcResult = document.getElementById('adjustCalcResult');
+    const aType = document.getElementById('adjustType');
+
+    if (!aProd || !aPkgType || !aPkgCount || !aCalcResult) return;
+
+    const prod = this.state.products.find(p => p.id == aProd.value);
+    const baseSym = (prod && prod.unit) ? prod.unit : 'kg';
+    const pkgType = aPkgType.value || 'Bag';
+    const count = parseFloat(aPkgCount.value) || 0;
+    const isDeduction = (aType?.value || 'deduction') === 'deduction';
+    const sign = isDeduction ? '−' : '+';
+
+    if (pkgType.toLowerCase() === 'loose') {
+      aQtyHidden.value = count;
+      if (aPkgUnitHidden) aPkgUnitHidden.value = baseSym;
+      aCalcResult.innerHTML = `<strong>${sign}${count} ${baseSym} Loose</strong>`;
+    } else {
+      const opt = aPkgSize.options[aPkgSize.selectedIndex];
+      if (opt && opt.value) {
+        const size = parseFloat(opt.value) || 0;
+        const unit = opt.dataset.unit || baseSym;
+        const mult = parseFloat(opt.dataset.multiplier) || size;
+        const total = Math.round(count * mult * 10000) / 10000;
+        aQtyHidden.value = total;
+        if (aPkgUnitHidden) aPkgUnitHidden.value = unit;
+
+        const noun = count === 1 ? pkgType : (pkgType.endsWith('s') ? pkgType : pkgType + 's');
+        aCalcResult.innerHTML = `<strong>${sign}${count} × ${size} ${unit} ${noun} = ${sign}${total} ${baseSym}</strong>`;
+      } else {
+        aQtyHidden.value = 0;
+        aCalcResult.innerHTML = `<strong>0 ${baseSym}</strong>`;
+      }
+    }
+  },
+
+  openAdjustmentModal(productId = null) {
+    const form = document.getElementById('formAdjustment');
+    if (form) form.reset();
+
+    const dIn = document.getElementById('adjustDate');
+    if (dIn) dIn.value = new Date().toISOString().split('T')[0];
+
+    const prodSel = document.getElementById('adjustProduct');
+    if (prodSel && productId) {
+      prodSel.value = productId;
+    }
+    this.syncAdjustPackagingUI();
+    this.openModal('modalAdjustment');
+  },
+
+  // ── Daily Farm Digest ─────────────────────────────────────────────────────
+  async openDailyFarmDigest() {
+    this.openModal('modalFarmDigest');
+    const content = document.getElementById('digestContent');
+    const waLink = document.getElementById('btnWhatsAppDigest');
+    if (content) content.innerHTML = '<div class="loading-overlay"><div class="spinner"></div></div>';
+
+    try {
+      const res = await fetch('/api/dashboard/digest');
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.formatted_text || 'No operations recorded for today yet.';
+        if (content) content.textContent = text;
+        if (waLink) {
+          waLink.href = `https://wa.me/?text=${encodeURIComponent(text)}`;
+        }
+      } else {
+        if (content) content.textContent = 'Failed to load digest summary from server.';
+      }
+    } catch (err) {
+      if (content) content.textContent = 'Error loading digest: ' + err.message;
+    }
+  },
+
+  // ── Price Comparison & Rate Tracking ─────────────────────────────────────
+  async checkLastPurchasePrice(productId) {
+    const compareBox = document.getElementById('purchaseRateCompare');
+    if (!compareBox) return;
+
+    if (!productId) {
+      compareBox.style.display = 'none';
+      compareBox.innerHTML = '';
+      this.lastPurchaseData = null;
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/purchases/last-price?product_id=${productId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.last_price != null) {
+          this.lastPurchaseData = data;
+          compareBox.style.display = 'inline-block';
+          compareBox.className = 'rate-compare-pill rate-same';
+          const pkg = data.package_summary || `${data.packaging_type || 'Unit'}`;
+          compareBox.innerHTML = `<span>📊 Last Paid: <strong>₹${data.last_price.toLocaleString('en-IN')}</strong> (${pkg} on ${data.purchase_date || 'prev purchase'})</span>`;
+          this.recalcRateComparison();
+        } else {
+          this.lastPurchaseData = null;
+          compareBox.style.display = 'none';
+        }
+      }
+    } catch (_) {
+      this.lastPurchaseData = null;
+      compareBox.style.display = 'none';
+    }
+  },
+
+  recalcRateComparison() {
+    const compareBox = document.getElementById('purchaseRateCompare');
+    const unitPriceIn = document.getElementById('purchaseUnitPrice');
+    if (!compareBox || !this.lastPurchaseData || !unitPriceIn) return;
+
+    const lastPrice = this.lastPurchaseData.last_price;
+    const currentPrice = parseFloat(unitPriceIn.value) || 0;
+
+    if (currentPrice <= 0 || lastPrice <= 0) {
+      compareBox.className = 'rate-compare-pill rate-same';
+      compareBox.innerHTML = `<span>📊 Last Paid: <strong>₹${lastPrice.toLocaleString('en-IN')}</strong> (${this.lastPurchaseData.purchase_date || ''})</span>`;
+      return;
+    }
+
+    const diff = currentPrice - lastPrice;
+    const pct = ((diff / lastPrice) * 100).toFixed(1);
+
+    if (diff > 0.01) {
+      compareBox.className = 'rate-compare-pill rate-up';
+      compareBox.innerHTML = `<span>🔺 Rate increased by <strong>₹${diff.toFixed(2)} (+${pct}%)</strong> vs last purchase (₹${lastPrice})</span>`;
+    } else if (diff < -0.01) {
+      compareBox.className = 'rate-compare-pill rate-down';
+      compareBox.innerHTML = `<span>🟢 Rate decreased by <strong>₹${Math.abs(diff).toFixed(2)} (${pct}%)</strong> vs last purchase (₹${lastPrice})</span>`;
+    } else {
+      compareBox.className = 'rate-compare-pill rate-same';
+      compareBox.innerHTML = `<span>⚖️ Same rate as last purchase (₹${lastPrice})</span>`;
+    }
+  },
+
+  // ── Web Speech API Voice Recognition ──────────────────────────────────────
+  initVoiceTyping() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    document.querySelectorAll('.btn-voice').forEach(btn => {
+      btn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!SpeechRecognition) {
+          App.showToast('Speech Recognition not supported in this browser. Please type manually.', 'info');
+          return;
+        }
+
+        const targetId = btn.dataset.target;
+        const targetInput = document.getElementById(targetId);
+        if (!targetInput) return;
+
+        if (btn.classList.contains('listening')) {
+          if (btn._recognition) {
+            btn._recognition.stop();
+          }
+          return;
+        }
+
+        try {
+          const recognition = new SpeechRecognition();
+          recognition.continuous = false;
+          recognition.interimResults = true;
+          recognition.lang = 'en-IN';
+
+          btn._recognition = recognition;
+          const statusSpan = btn.querySelector('.voice-status');
+
+          recognition.onstart = () => {
+            btn.classList.add('listening');
+            if (statusSpan) statusSpan.textContent = 'Listening...';
+          };
+
+          recognition.onresult = (evt) => {
+            const transcript = Array.from(evt.results)
+              .map(result => result[0].transcript)
+              .join('');
+            if (evt.results[0].isFinal) {
+              const currentVal = targetInput.value.trim();
+              targetInput.value = currentVal ? `${currentVal} ${transcript}` : transcript;
+              targetInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          };
+
+          recognition.onerror = () => {
+            btn.classList.remove('listening');
+            if (statusSpan) statusSpan.textContent = 'Speak';
+          };
+
+          recognition.onend = () => {
+            btn.classList.remove('listening');
+            if (statusSpan) statusSpan.textContent = 'Speak';
+          };
+
+          recognition.start();
+        } catch (err) {
+          btn.classList.remove('listening');
+          App.showToast('Could not start microphone: ' + err.message, 'error');
+        }
+      };
+    });
+  },
+
+  // ── Sprayer Dosage Calculator ─────────────────────────────────────────────
+  initDosageCalculator() {
+    const toggleBtn = document.getElementById('toggleDosageCalc');
+    const body = document.getElementById('dosageCalcBody');
+    const toggleIcon = document.getElementById('dosageToggleIcon');
+    const tankSizeSelect = document.getElementById('dosageTankSize');
+    const customGroup = document.getElementById('dosageCustomTankGroup');
+    const customTank = document.getElementById('dosageCustomTank');
+    const doseRate = document.getElementById('dosageDoseRate');
+    const tankCount = document.getElementById('dosageTankCount');
+    const requiredText = document.getElementById('dosageRequiredText');
+    const btnApply = document.getElementById('btnApplyDosage');
+
+    if (!toggleBtn || !body) return;
+
+    toggleBtn.onclick = () => {
+      const isHidden = body.style.display === 'none';
+      body.style.display = isHidden ? 'block' : 'none';
+      if (toggleIcon) toggleIcon.textContent = isHidden ? '▲ Collapse' : '▼ Expand Helper';
+    };
+
+    const updateCalc = () => {
+      const isCustom = tankSizeSelect.value === 'custom';
+      if (customGroup) customGroup.style.display = isCustom ? 'block' : 'none';
+
+      const capacity = isCustom ? (parseFloat(customTank?.value) || 0) : (parseFloat(tankSizeSelect.value) || 0);
+      const rate = parseFloat(doseRate?.value) || 0;
+      const count = parseFloat(tankCount?.value) || 1;
+
+      const totalRequired = capacity * rate * count;
+      const totalInBase = totalRequired / 1000;
+
+      if (requiredText) {
+        if (totalRequired > 0) {
+          requiredText.textContent = `${totalRequired.toLocaleString()} ml/g (${totalInBase.toFixed(3)} L/kg)`;
+        } else {
+          requiredText.textContent = '0 ml (0 L)';
+        }
+      }
+      return { totalRequired, totalInBase };
+    };
+
+    [tankSizeSelect, customTank, doseRate, tankCount].forEach(el => {
+      el?.addEventListener('input', updateCalc);
+      el?.addEventListener('change', updateCalc);
+    });
+
+    if (btnApply) {
+      btnApply.onclick = () => {
+        const { totalRequired, totalInBase } = updateCalc();
+        if (totalRequired <= 0) {
+          App.showToast('Please enter valid dilution dose rate and tank capacity first.', 'error');
+          return;
+        }
+
+        const uProd = document.getElementById('usageProduct');
+        const prodId = uProd?.value;
+        const prod = App.state.products.find(p => p.id == prodId);
+        const isLiquid = prod && (prod.unit || '').toLowerCase().startsWith('l');
+
+        const uPkgType = document.getElementById('usagePkgType');
+        const uPkgCount = document.getElementById('usagePkgCount');
+
+        if (uPkgType) {
+          uPkgType.value = 'Loose';
+          App.syncUsagePackagingSizes();
+          if (uPkgCount) {
+            uPkgCount.value = totalInBase;
+            uPkgCount.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+        }
+
+        App.showToast(`Applied ${totalRequired} ml/g (${totalInBase.toFixed(3)} ${isLiquid ? 'L' : 'kg'}) to usage quantity!`);
+      };
     }
   },
 };

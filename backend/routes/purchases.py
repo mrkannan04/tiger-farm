@@ -24,6 +24,7 @@ def list_purchases():
     search = request.args.get('search', '').strip()
     product_id = request.args.get('product_id')
     category_id = request.args.get('category_id')
+    payment_status = request.args.get('payment_status')
     start_date = parse_date(request.args.get('start_date'))
     end_date = parse_date(request.args.get('end_date'))
     page = int(request.args.get('page', 1))
@@ -37,6 +38,7 @@ def list_purchases():
                 Product.name.ilike(f'%{search}%'),
                 Purchase.supplier_name.ilike(f'%{search}%'),
                 Purchase.invoice_number.ilike(f'%{search}%'),
+                Purchase.batch_number.ilike(f'%{search}%'),
                 Purchase.remarks.ilike(f'%{search}%'),
             )
         )
@@ -50,6 +52,8 @@ def list_purchases():
             query = query.filter(Product.category_id == int(category_id))
         except (ValueError, TypeError):
             pass
+    if payment_status:
+        query = query.filter(Purchase.payment_status == payment_status)
     if start_date:
         query = query.filter(Purchase.purchase_date >= start_date)
     if end_date:
@@ -60,6 +64,9 @@ def list_purchases():
     purchases = query.offset((page - 1) * per_page).limit(per_page).all()
 
     total_cost = sum(p.total_price or 0 for p in purchases)
+    total_credit_pending = db.session.query(
+        db.func.sum(Purchase.total_price)
+    ).filter(Purchase.payment_status.in_(['Pending Credit', 'Partial'])).scalar() or 0.0
 
     return jsonify({
         'success': True,
@@ -70,6 +77,7 @@ def list_purchases():
         'per_page': per_page,
         'pages': max((total + per_page - 1) // per_page, 1),
         'total_cost': round(total_cost, 2),
+        'total_credit_pending': round(float(total_credit_pending), 2),
     })
 
 
@@ -119,6 +127,10 @@ def create_purchase():
         package_unit=data.get('package_unit'),
         package_count=float(data['package_count']) if data.get('package_count') else None,
         loose_quantity=float(data['loose_quantity']) if (data.get('loose_quantity') not in (None, '') and str(data.get('loose_quantity')).strip() != '') else None,
+        batch_number=data.get('batch_number'),
+        expiry_date=parse_date(data.get('expiry_date')),
+        payment_status=data.get('payment_status') or 'Paid',
+        payment_due_date=parse_date(data.get('payment_due_date')),
     )
 
     if error:
@@ -160,6 +172,69 @@ def get_purchase(purchase_id):
         'purchase': purchase.to_dict(),
         'data': purchase.to_dict(),
     })
+
+
+@purchases_bp.route('/api/purchases/last-price', methods=['GET'])
+def get_last_price():
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+    product_id = request.args.get('product_id')
+    if not product_id:
+        return jsonify({'success': False, 'message': 'product_id required'}), 400
+
+    pkg_type = request.args.get('packaging_type')
+    query = Purchase.query.filter(Purchase.product_id == int(product_id), Purchase.unit_price > 0)
+    if pkg_type and pkg_type.lower() != 'loose':
+        query = query.filter(Purchase.packaging_type.ilike(pkg_type))
+    last_p = query.order_by(Purchase.purchase_date.desc(), Purchase.id.desc()).first()
+
+    if not last_p:
+        last_p = Purchase.query.filter(Purchase.product_id == int(product_id), Purchase.unit_price > 0).order_by(Purchase.purchase_date.desc(), Purchase.id.desc()).first()
+
+    if last_p:
+        return jsonify({
+            'success': True,
+            'last_price': last_p.unit_price,
+            'total_price': last_p.total_price,
+            'package_summary': last_p.package_summary,
+            'packaging_type': last_p.packaging_type,
+            'package_size': last_p.package_size,
+            'package_unit': last_p.package_unit,
+            'purchase_date': last_p.purchase_date.strftime('%d %b %Y') if last_p.purchase_date else None,
+            'supplier_name': last_p.supplier_name,
+        })
+    return jsonify({'success': True, 'last_price': None})
+
+
+@purchases_bp.route('/api/purchases/<int:purchase_id>/payment', methods=['PATCH', 'PUT', 'POST'])
+def update_purchase_payment(purchase_id):
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+    purchase = Purchase.query.get_or_404(purchase_id)
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    status = data.get('payment_status') or ('Paid' if purchase.payment_status != 'Paid' else 'Pending Credit')
+    due_date = parse_date(data.get('payment_due_date')) if data.get('payment_due_date') else None
+    try:
+        purchase.payment_status = status
+        if due_date is not None:
+            purchase.payment_due_date = due_date
+        db.session.add(ActivityLog(
+            user_id=session.get('user_id'),
+            action=f"Updated payment status of Purchase #{purchase.id} to '{status}'.",
+            entity_type='purchase',
+            entity_id=purchase.id,
+        ))
+        db.session.commit()
+        return jsonify({
+            'success': True,
+            'message': f"Payment status updated to '{status}'.",
+            'purchase': purchase.to_dict(),
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Failed: {str(e)}'}), 500
 
 
 @purchases_bp.route('/api/purchases/<int:purchase_id>', methods=['DELETE'])

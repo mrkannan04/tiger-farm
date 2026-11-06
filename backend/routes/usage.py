@@ -22,6 +22,7 @@ def list_usages():
     search = request.args.get('search', '').strip()
     product_id = request.args.get('product_id')
     category_id = request.args.get('category_id')
+    crop_season = request.args.get('crop_season', '').strip()
     start_date = parse_date(request.args.get('start_date'))
     end_date = parse_date(request.args.get('end_date'))
     page = int(request.args.get('page', 1))
@@ -35,6 +36,7 @@ def list_usages():
                 Product.name.ilike(f'%{search}%'),
                 Usage.field_location.ilike(f'%{search}%'),
                 Usage.reason.ilike(f'%{search}%'),
+                Usage.crop_season.ilike(f'%{search}%'),
                 Usage.remarks.ilike(f'%{search}%'),
             )
         )
@@ -48,6 +50,8 @@ def list_usages():
             query = query.filter(Product.category_id == int(category_id))
         except (ValueError, TypeError):
             pass
+    if crop_season:
+        query = query.filter(Usage.crop_season.ilike(f'%{crop_season}%'))
     if start_date:
         query = query.filter(Usage.usage_date >= start_date)
     if end_date:
@@ -94,6 +98,7 @@ def create_usage():
         package_size=float(data['package_size']) if data.get('package_size') else None,
         package_unit=data.get('package_unit'),
         package_count=float(data['package_count']) if data.get('package_count') else None,
+        crop_season=data.get('crop_season'),
     )
 
     if error:
@@ -182,3 +187,19 @@ def delete_usage(usage_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Delete failed: {str(e)}', 'error': str(e)}), 500
+
+
+@usage_bp.route('/api/usages/seasons', methods=['GET'])
+def list_seasons():
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+    try:
+        results = db.session.query(Usage.crop_season).filter(
+            Usage.crop_season != None,
+            Usage.crop_season != ''
+        ).distinct().order_by(Usage.crop_season).all()
+        seasons = [r[0] for r in results if r[0]]
+        return jsonify({'success': True, 'seasons': seasons})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e), 'seasons': []}), 500

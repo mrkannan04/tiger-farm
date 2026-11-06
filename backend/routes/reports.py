@@ -26,9 +26,39 @@ def stock_pdf():
     auth_err = _require_auth()
     if auth_err:
         return auth_err
-    products = Product.query.filter_by(is_active=True).order_by(Product.name).all()
-    pdf_bytes = pdf_service.generate_stock_report(products)
-    return _pdf_response(pdf_bytes, 'TigerFarm_Stock_Report.pdf')
+
+    category_id = request.args.get('category_id')
+    status_filter = request.args.get('status') or 'active'
+    search = (request.args.get('search') or '').strip()
+
+    query = Product.query
+    if category_id:
+        try:
+            query = query.filter(Product.category_id == int(category_id))
+        except (ValueError, TypeError):
+            pass
+
+    if status_filter == 'active':
+        query = query.filter(Product.is_active == True)
+    elif status_filter == 'inactive':
+        query = query.filter(Product.is_active == False)
+    # in_stock / low_stock / out_of_stock are filtered post-query via property
+
+    if search:
+        query = query.filter(Product.name.ilike(f'%{search}%'))
+
+    products = query.order_by(Product.name).all()
+
+    if status_filter in ('in_stock', 'low_stock', 'out_of_stock'):
+        products = [p for p in products if p.status == status_filter]
+
+    pdf_bytes = pdf_service.generate_stock_report(
+        products,
+        category_id=category_id,
+        status_filter=status_filter,
+        search=search
+    )
+    return _pdf_response(pdf_bytes, 'TigerFarm_Product_List_Report.pdf')
 
 
 @reports_bp.route('/api/reports/purchases/pdf')
@@ -39,7 +69,7 @@ def purchases_pdf():
     from ..utils.validators import parse_date
     start = parse_date(request.args.get('start_date'))
     end = parse_date(request.args.get('end_date'))
-    q = Purchase.query.order_by(Purchase.purchase_date.desc())
+    q = Purchase.query.order_by(Purchase.purchase_date.desc(), Purchase.id.desc())
     if start:
         q = q.filter(Purchase.purchase_date >= start)
     if end:
@@ -56,7 +86,7 @@ def usage_pdf():
     from ..utils.validators import parse_date
     start = parse_date(request.args.get('start_date'))
     end = parse_date(request.args.get('end_date'))
-    q = Usage.query.order_by(Usage.usage_date.desc())
+    q = Usage.query.order_by(Usage.usage_date.desc(), Usage.id.desc())
     if start:
         q = q.filter(Usage.usage_date >= start)
     if end:
@@ -79,7 +109,9 @@ def product_history_pdf(product_id):
 def _pdf_response(pdf_bytes, filename):
     response = make_response(pdf_bytes)
     response.headers['Content-Type'] = 'application/pdf'
-    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    # Use inline so it opens directly in browser's built-in PDF viewer tab with print and download controls
+    disposition = 'attachment' if request.args.get('download') == '1' else 'inline'
+    response.headers['Content-Disposition'] = f'{disposition}; filename="{filename}"'
     return response
 
 

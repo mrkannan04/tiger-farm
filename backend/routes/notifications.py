@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request, session
 from ..models import db, Notification, Product
-from ..services.stock_service import _check_and_update_notifications
+from ..services.stock_service import _check_and_update_notifications, check_expiry_notifications
 
 notifications_bp = Blueprint('notifications', __name__)
 
@@ -21,6 +21,7 @@ def list_notifications():
     try:
         for p in Product.query.filter_by(is_active=True).all():
             _check_and_update_notifications(p)
+        check_expiry_notifications()
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -38,7 +39,7 @@ def list_notifications():
     notifications = query.offset((page - 1) * per_page).limit(per_page).all()
     unread_count = Notification.query.filter_by(is_read=False).count()
     active_alerts = Notification.query.filter_by(is_read=False).filter(
-        Notification.type.in_(['low_stock', 'out_of_stock'])
+        Notification.type.in_(['low_stock', 'out_of_stock', 'expired', 'expiry_warning'])
     ).all()
 
     return jsonify({
@@ -90,13 +91,14 @@ def unread_count():
     try:
         for p in Product.query.filter_by(is_active=True).all():
             _check_and_update_notifications(p)
+        check_expiry_notifications()
         db.session.commit()
     except Exception:
         db.session.rollback()
 
     count = Notification.query.filter_by(is_read=False).count()
     active_alerts = Notification.query.filter_by(is_read=False).filter(
-        Notification.type.in_(['low_stock', 'out_of_stock'])
+        Notification.type.in_(['low_stock', 'out_of_stock', 'expired', 'expiry_warning'])
     ).all()
     return jsonify({
         'success': True,

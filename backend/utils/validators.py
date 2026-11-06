@@ -90,8 +90,9 @@ def validate_purchase(data):
         except (TypeError, ValueError):
             errors['total_price'] = 'Please enter a valid total price.'
 
-    if not data.get('purchase_date'):
-        errors['purchase_date'] = 'Purchase date is required.'
+    purch_date_str = data.get('purchase_date')
+    if not purch_date_str or not parse_date(purch_date_str):
+        errors['purchase_date'] = 'Purchase date is compulsory. Please choose or select the date.'
 
     return errors
 
@@ -118,8 +119,9 @@ def validate_usage(data):
         except (TypeError, ValueError):
             errors['quantity'] = 'Please enter a valid quantity.'
 
-    if not data.get('usage_date'):
-        errors['usage_date'] = 'Usage date is required.'
+    use_date_str = data.get('usage_date')
+    if not use_date_str or not parse_date(use_date_str):
+        errors['usage_date'] = 'Usage date is compulsory. Please choose or select the date.'
 
     return errors
 

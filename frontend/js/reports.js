@@ -29,13 +29,25 @@ const ReportsView = {
         <!-- Stock Report -->
         <div class="card">
           <div style="font-size:1.8rem; margin-bottom:0.5rem;">📦</div>
-          <h4 style="font-size:1rem; margin-bottom:0.25rem;">Complete Stock Report</h4>
-          <p style="font-size:0.85rem; color:var(--muted); margin-bottom:1rem;">
-            Full farm inventory list, category classifications, threshold flags, and total estimated stock valuation.
+          <h4 style="font-size:1rem; margin-bottom:0.25rem;">Complete Stock & Product Master Report</h4>
+          <p style="font-size:0.85rem; color:var(--muted); margin-bottom:0.75rem;">
+            Full farm inventory list, category classifications, packaging breakdown, threshold flags, and total stock valuation.
           </p>
-          <a href="/api/reports/stock/pdf" target="_blank" class="btn btn-primary btn-sm" style="width:100%; justify-content:center;">
+          <div style="display:flex; flex-direction:column; gap:0.4rem; margin-bottom:0.75rem;">
+            <select id="repStockCat" style="width:100%; padding:0.45rem;">
+              <option value="">All Categories</option>
+              ${(App.state.categories || []).map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+            </select>
+            <select id="repStockStatus" style="width:100%; padding:0.45rem;">
+              <option value="active">Active Products Only</option>
+              <option value="all">All Products (Active & Inactive)</option>
+              <option value="low_stock">Low Stock Alerts Only</option>
+              <option value="out_of_stock">Out of Stock Only</option>
+            </select>
+          </div>
+          <button class="btn btn-primary btn-sm" id="btnDownloadStockPdf" style="width:100%; justify-content:center;">
             Download Stock PDF
-          </a>
+          </button>
         </div>
 
         <!-- Purchases Report -->
@@ -117,6 +129,16 @@ const ReportsView = {
   },
 
   bindEvents() {
+    // Stock PDF with category and status filter
+    document.getElementById('btnDownloadStockPdf')?.addEventListener('click', () => {
+      const cat = document.getElementById('repStockCat')?.value;
+      const status = document.getElementById('repStockStatus')?.value;
+      const q = new URLSearchParams();
+      if (cat) q.set('category_id', cat);
+      if (status) q.set('status', status);
+      window.open(`/api/reports/products/pdf?${q.toString()}`, '_blank');
+    });
+
     // Purchase PDF with date filter
     document.getElementById('btnDownloadPurchPdf')?.addEventListener('click', () => {
       const from = document.getElementById('repPurchFrom').value;

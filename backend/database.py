@@ -37,11 +37,16 @@ def _migrate_schema():
                     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS package_unit VARCHAR(20)",
                     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS package_count FLOAT",
                     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS package_summary VARCHAR(200)",
+                    "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS batch_number VARCHAR(50)",
+                    "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS expiry_date DATE",
+                    "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'Paid'",
+                    "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS payment_due_date DATE",
                     "ALTER TABLE usages ADD COLUMN IF NOT EXISTS packaging_type VARCHAR(50)",
                     "ALTER TABLE usages ADD COLUMN IF NOT EXISTS package_size FLOAT",
                     "ALTER TABLE usages ADD COLUMN IF NOT EXISTS package_unit VARCHAR(20)",
                     "ALTER TABLE usages ADD COLUMN IF NOT EXISTS package_count FLOAT",
                     "ALTER TABLE usages ADD COLUMN IF NOT EXISTS package_summary VARCHAR(200)",
+                    "ALTER TABLE usages ADD COLUMN IF NOT EXISTS crop_season VARCHAR(100)",
                     "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS packaging_type VARCHAR(50)",
                     "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS package_summary VARCHAR(200)",
                 ]
@@ -101,6 +106,14 @@ def _migrate_schema():
                 conn.execute(text("ALTER TABLE purchases ADD COLUMN package_count FLOAT"))
             if 'package_summary' not in purch_cols:
                 conn.execute(text("ALTER TABLE purchases ADD COLUMN package_summary VARCHAR(200)"))
+            if 'batch_number' not in purch_cols:
+                conn.execute(text("ALTER TABLE purchases ADD COLUMN batch_number VARCHAR(50)"))
+            if 'expiry_date' not in purch_cols:
+                conn.execute(text("ALTER TABLE purchases ADD COLUMN expiry_date DATE"))
+            if 'payment_status' not in purch_cols:
+                conn.execute(text("ALTER TABLE purchases ADD COLUMN payment_status VARCHAR(20) DEFAULT 'Paid'"))
+            if 'payment_due_date' not in purch_cols:
+                conn.execute(text("ALTER TABLE purchases ADD COLUMN payment_due_date DATE"))
             conn.commit()
 
             # Check usages table packaging columns
@@ -115,6 +128,8 @@ def _migrate_schema():
                 conn.execute(text("ALTER TABLE usages ADD COLUMN package_count FLOAT"))
             if 'package_summary' not in usage_cols:
                 conn.execute(text("ALTER TABLE usages ADD COLUMN package_summary VARCHAR(200)"))
+            if 'crop_season' not in usage_cols:
+                conn.execute(text("ALTER TABLE usages ADD COLUMN crop_season VARCHAR(100)"))
             conn.commit()
 
             # Check stock_movements table packaging columns
@@ -160,10 +175,13 @@ def _seed_defaults():
         ('Kilogram', 'KG'), ('Gram', 'GM'), ('Milligram', 'MG'),
         ('Liter', 'L'), ('Milliliter', 'ML'), ('Unit', 'Unit'),
         ('Packet', 'Pkt'), ('Bag', 'Bag'), ('Bottle', 'Btl'),
-        ('Box', 'Box'), ('Ton', 'Ton'),
+        ('Box', 'Box'), ('Pouch', 'Pouch'), ('Ton', 'Ton'),
     ]
     for name, symbol in default_units:
-        if not Unit.query.filter_by(symbol=symbol).first():
+        if not Unit.query.filter(
+            (db.func.lower(Unit.symbol) == symbol.lower()) |
+            (db.func.lower(Unit.name) == name.lower())
+        ).first():
             db.session.add(Unit(name=name, symbol=symbol))
 
     # Default fields / locations
@@ -193,6 +211,9 @@ def _seed_defaults():
     # Seed Package Master (Reusable package sizes and packaging types)
     # Weight sizes
     weight_packages = [
+        (50.0, 'g', 'Bag', 'kg', 0.05),
+        (100.0, 'g', 'Bag', 'kg', 0.10),
+        (200.0, 'g', 'Bag', 'kg', 0.20),
         (250.0, 'g', 'Bag', 'kg', 0.25),
         (500.0, 'g', 'Bag', 'kg', 0.5),
         (1.0, 'kg', 'Bag', 'kg', 1.0),
@@ -206,13 +227,24 @@ def _seed_defaults():
         (45.0, 'kg', 'Bag', 'kg', 45.0),
         (50.0, 'kg', 'Bag', 'kg', 50.0),
         # Pouch weight sizes
+        (50.0, 'g', 'Pouch', 'kg', 0.05),
+        (100.0, 'g', 'Pouch', 'kg', 0.10),
+        (200.0, 'g', 'Pouch', 'kg', 0.20),
         (250.0, 'g', 'Pouch', 'kg', 0.25),
         (500.0, 'g', 'Pouch', 'kg', 0.5),
         (1.0, 'kg', 'Pouch', 'kg', 1.0),
+        # Bottle weight sizes
+        (50.0, 'g', 'Bottle', 'kg', 0.05),
+        (100.0, 'g', 'Bottle', 'kg', 0.10),
+        (200.0, 'g', 'Bottle', 'kg', 0.20),
     ]
 
     # Liquid sizes
     liquid_packages = [
+        (10.0, 'ml', 'Bottle', 'L', 0.010),
+        (25.0, 'ml', 'Bottle', 'L', 0.025),
+        (50.0, 'ml', 'Bottle', 'L', 0.050),
+        (100.0, 'ml', 'Bottle', 'L', 0.100),
         (250.0, 'ml', 'Bottle', 'L', 0.25),
         (500.0, 'ml', 'Bottle', 'L', 0.5),
         (1.0, 'L', 'Bottle', 'L', 1.0),
@@ -221,6 +253,13 @@ def _seed_defaults():
         (4.0, 'L', 'Bottle', 'L', 4.0),
         (5.0, 'L', 'Bottle', 'L', 5.0),
         (10.0, 'L', 'Bottle', 'L', 10.0),
+        # Pouch liquid sizes
+        (10.0, 'ml', 'Pouch', 'L', 0.010),
+        (25.0, 'ml', 'Pouch', 'L', 0.025),
+        (50.0, 'ml', 'Pouch', 'L', 0.050),
+        (100.0, 'ml', 'Pouch', 'L', 0.100),
+        (250.0, 'ml', 'Pouch', 'L', 0.25),
+        (500.0, 'ml', 'Pouch', 'L', 0.5),
         # Containers & Drums
         (5.0, 'L', 'Container', 'L', 5.0),
         (10.0, 'L', 'Container', 'L', 10.0),

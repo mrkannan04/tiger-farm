@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from ..models import db, Product, StockMovement, Notification, Purchase, Usage, ProductPackageStock, PackageMaster
 
 
@@ -6,12 +6,13 @@ def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
                     total_price=None, purchase_date=None, supplier_name=None,
                     invoice_number=None, remarks=None, bill_file=None,
                     packaging_type=None, package_size=None, package_unit=None, package_count=None,
-                    loose_quantity=None):
+                    loose_quantity=None, batch_number=None, expiry_date=None,
+                    payment_status='Paid', payment_due_date=None):
     """
     Transaction-first purchase recorder:
     1. Validate product and compute standard quantity from packaging type + package size + count + optional loose quantity.
     2. Auto-compute total or unit price if missing.
-    3. Create Purchase record with packaging details.
+    3. Create Purchase record with packaging and batch/payment details.
     4. Update product current_quantity and ProductPackageStock breakdown (separate bag & loose records).
     5. Create StockMovement record with package_summary.
     6. Commit transaction atomically.
@@ -108,6 +109,10 @@ def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
             package_unit=p_unit,
             package_count=p_count,
             package_summary=package_summary,
+            batch_number=(batch_number or '').strip() or None,
+            expiry_date=expiry_date,
+            payment_status=payment_status or 'Paid',
+            payment_due_date=payment_due_date,
             unit_price=unit_price,
             total_price=total_price,
             purchase_date=purchase_date or date.today(),
@@ -194,7 +199,8 @@ def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
 
 def record_usage(product_id, quantity=None, unit_id=None, usage_date=None,
                  field_location=None, reason=None, remarks=None,
-                 packaging_type=None, package_size=None, package_unit=None, package_count=None):
+                 packaging_type=None, package_size=None, package_unit=None, package_count=None,
+                 crop_season=None):
     """
     Transaction-first usage recorder:
     1. Find product in DB and validate requested packaging & quantity.
@@ -296,6 +302,7 @@ def record_usage(product_id, quantity=None, unit_id=None, usage_date=None,
             package_unit=p_unit,
             package_count=p_count,
             package_summary=package_summary,
+            crop_season=(crop_season or '').strip() or None,
             usage_date=usage_date or date.today(),
             field_location=(field_location or '').strip() or None,
             reason=(reason or '').strip() or None,
@@ -456,3 +463,185 @@ def _check_and_update_notifications(product):
         # Stock is healthy above threshold — clear any obsolete alert
         if existing:
             db.session.delete(existing)
+
+
+def record_stock_adjustment(product_id, adjustment_type, quantity=None,
+                            packaging_type=None, package_size=None, package_unit=None, package_count=None,
+                            reason=None, remarks=None, adjustment_date=None):
+    """
+    Adjust product inventory for damaged goods, spillage, audit reconciliation, or write-offs.
+    adjustment_type: 'addition' or 'deduction'
+    """
+    product = Product.query.get(product_id)
+    if not product:
+        return None, 'Product not found in database.'
+
+    if adjustment_date is None:
+        adjustment_date = date.today()
+
+    unit_sym = product.unit.symbol if product.unit else 'kg'
+    pkg_type = (packaging_type or '').strip()
+    p_size = float(package_size) if package_size is not None and str(package_size).strip() != '' else None
+    p_unit = (package_unit or unit_sym).strip()
+    p_count = float(package_count) if package_count is not None and str(package_count).strip() != '' else None
+
+    # Calculate quantity
+    if pkg_type:
+        if pkg_type.lower() == 'loose':
+            if quantity is None or quantity <= 0:
+                quantity = p_count if p_count and p_count > 0 else 0.0
+            p_size = 1.0
+            package_summary = f"{quantity:g} {p_unit} Loose"
+        else:
+            if p_size and p_count:
+                multiplier = PackageMaster.compute_multiplier(p_size, p_unit)
+                computed_qty = round(p_count * multiplier, 4)
+                if not quantity or quantity <= 0:
+                    quantity = computed_qty
+                noun = f"{pkg_type}s" if p_count != 1 else pkg_type
+                package_summary = f"{p_count:g} {noun} × {p_size:g} {p_unit} = {quantity:g} {unit_sym}"
+            else:
+                package_summary = f"{quantity:g} {unit_sym}" if quantity else ""
+    else:
+        package_summary = f"{quantity:g} {unit_sym}" if quantity else ""
+
+    try:
+        quantity = float(quantity)
+    except (TypeError, ValueError):
+        return None, 'Adjustment quantity must be a valid number.'
+
+    if quantity <= 0:
+        return None, 'Adjustment quantity must be greater than zero.'
+
+    is_deduction = (adjustment_type or '').lower() == 'deduction'
+    signed_qty = -quantity if is_deduction else quantity
+
+    if is_deduction and quantity > product.current_quantity:
+        return None, f"Cannot deduct {quantity:g} {unit_sym}. Current stock is only {product.current_quantity:g} {unit_sym}."
+
+    # Check package-level stock if specific package was picked for deduction
+    stock_item = None
+    if pkg_type:
+        if pkg_type.lower() == 'loose':
+            stock_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == 'loose'
+            ).first()
+            if is_deduction and stock_item and quantity > stock_item.package_count:
+                return None, f"Insufficient Loose Stock to deduct. Available: {stock_item.package_count:g} {unit_sym}."
+        elif p_size is not None and p_count is not None:
+            stock_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == pkg_type.lower(),
+                ProductPackageStock.package_size == p_size,
+                db.func.lower(ProductPackageStock.unit_symbol) == p_unit.lower()
+            ).first()
+            if is_deduction and stock_item and p_count > stock_item.package_count:
+                noun = f"{pkg_type}s" if stock_item.package_count != 1 else pkg_type
+                return None, f"Insufficient {p_size:g} {p_unit} {pkg_type} Stock. Available: {stock_item.package_count:g} {noun}."
+
+    try:
+        # Update product current_quantity
+        product.current_quantity = max(0.0, round(product.current_quantity + signed_qty, 4))
+
+        # Update package stock breakdown
+        if pkg_type:
+            if pkg_type.lower() == 'loose':
+                if stock_item:
+                    stock_item.package_count = max(0.0, round(stock_item.package_count + signed_qty, 4))
+                    stock_item.total_quantity = max(0.0, round(stock_item.total_quantity + signed_qty, 4))
+                elif not is_deduction:
+                    db.session.add(ProductPackageStock(
+                        product_id=product.id,
+                        packaging_type='Loose',
+                        package_size=1.0,
+                        unit_symbol=unit_sym,
+                        package_count=quantity,
+                        total_quantity=quantity,
+                    ))
+            elif p_size is not None and p_count is not None:
+                if stock_item:
+                    count_delta = -p_count if is_deduction else p_count
+                    stock_item.package_count = max(0.0, round(stock_item.package_count + count_delta, 4))
+                    stock_item.total_quantity = max(0.0, round(stock_item.total_quantity + signed_qty, 4))
+                    if stock_item.package_count <= 0 and stock_item.total_quantity <= 0:
+                        db.session.delete(stock_item)
+                elif not is_deduction:
+                    db.session.add(ProductPackageStock(
+                        product_id=product.id,
+                        packaging_type=pkg_type,
+                        package_size=p_size,
+                        unit_symbol=p_unit,
+                        package_count=p_count,
+                        total_quantity=quantity,
+                    ))
+
+        action_label = "Deduction" if is_deduction else "Addition"
+        full_reason = f"[{reason or 'Stock Adjustment'}] {remarks or ''}".strip()
+        movement = StockMovement(
+            product_id=product.id,
+            movement_type='ADJUSTMENT',
+            quantity=signed_qty,
+            balance_after=product.current_quantity,
+            packaging_type=pkg_type or None,
+            package_summary=package_summary or f"{quantity:g} {unit_sym}",
+            movement_date=adjustment_date,
+            remarks=f"Adjustment ({action_label}): {full_reason}",
+        )
+        db.session.add(movement)
+
+        _check_and_update_notifications(product)
+        db.session.commit()
+        return movement, None
+    except Exception as e:
+        db.session.rollback()
+        return None, f"Database transaction failed: {str(e)}"
+
+
+def check_expiry_notifications():
+    """
+    Check for active products with batches expiring soon (<= 30 days) or expired.
+    Creates or updates system notification alerts without duplication.
+    """
+    today = date.today()
+    exp_threshold = today + timedelta(days=30)
+
+    try:
+        active_purchases = Purchase.query.join(Product, Purchase.product_id == Product.id).filter(
+            Product.is_active == True,
+            Product.current_quantity > 0,
+            Purchase.expiry_date != None,
+            Purchase.expiry_date <= exp_threshold
+        ).all()
+
+        for p in active_purchases:
+            prod = p.product
+            days_left = (p.expiry_date - today).days
+            is_expired = days_left < 0
+            notif_type = 'expired' if is_expired else 'expiry_warning'
+            batch_info = f" (Batch #{p.batch_number})" if p.batch_number else ""
+
+            if is_expired:
+                title = f"Expired Product: {prod.name}{batch_info}"
+                msg = f"{prod.name}{batch_info} expired on {p.expiry_date.strftime('%d %b %Y')} ({abs(days_left)} days ago). Current stock: {prod.current_quantity:g} {prod.unit.symbol if prod.unit else ''}."
+            else:
+                title = f"Expiry Warning: {prod.name}{batch_info}"
+                msg = f"{prod.name}{batch_info} expires in {days_left} day(s) on {p.expiry_date.strftime('%d %b %Y')}. Current stock: {prod.current_quantity:g} {prod.unit.symbol if prod.unit else ''}."
+
+            existing = Notification.query.filter_by(
+                product_id=prod.id,
+                type=notif_type,
+                is_read=False
+            ).first()
+            if not existing:
+                db.session.add(Notification(
+                    type=notif_type,
+                    title=title,
+                    message=msg,
+                    product_id=prod.id
+                ))
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"[WARN] check_expiry_notifications error: {e}")
+

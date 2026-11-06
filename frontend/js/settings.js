@@ -3,9 +3,14 @@
  */
 
 const SettingsView = {
-  tab: 'suppliers',
+  tab: 'packages',
 
   async render(container) {
+    const hash = window.location.hash;
+    if (hash.includes('?')) {
+      const qs = new URLSearchParams(hash.split('?')[1]);
+      if (qs.has('tab')) this.tab = qs.get('tab');
+    }
     this.container = container;
     this.renderLayout();
     await this.loadActiveTabContent();
@@ -20,16 +25,16 @@ const SettingsView = {
       <div class="page-header">
         <div>
           <h1 class="page-title">Settings & Farm Administration</h1>
-          <small>Manage vendors, locations, category taxonomies, security, and database backup/restore.</small>
+          <small>Manage package sizes, measurement units, vendors, locations, category taxonomies, and system security.</small>
         </div>
       </div>
 
       <!-- Settings Navigation Tabs -->
       <div class="settings-tabs-bar">
         <button class="btn ${this.tab === 'packages' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="packages">📦 Package / Unit Master</button>
+        <button class="btn ${this.tab === 'units' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="units">⚖️ Units of Measure</button>
         <button class="btn ${this.tab === 'suppliers' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="suppliers">🏢 Suppliers</button>
         <button class="btn ${this.tab === 'categories' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="categories">🏷️ Categories</button>
-        <button class="btn ${this.tab === 'units' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="units">⚖️ Units of Measure</button>
         <button class="btn ${this.tab === 'fields' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="fields">📍 Field Plots</button>
         <button class="btn ${this.tab === 'backup' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="backup">💾 Backup & Restore</button>
         <button class="btn ${this.tab === 'security' ? 'btn-primary' : 'btn-ghost'} btn-sm tab-btn" data-tab="security">🔒 Password</button>
@@ -48,6 +53,9 @@ const SettingsView = {
     this.container.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         this.tab = btn.dataset.tab;
+        if (typeof App !== 'undefined' && App.navigate) {
+          App.navigate('settings', { tab: this.tab });
+        }
         this.renderLayout();
         this.loadActiveTabContent();
       });
@@ -444,53 +452,121 @@ const SettingsView = {
 
       container.innerHTML = `
         <div class="card">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-            <h3 class="card-title" style="margin-bottom:0;">Measurement Units</h3>
-            <button class="btn btn-primary btn-sm" id="btnAddUnit"><span>+</span> Add Unit</button>
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.25rem; flex-wrap:wrap; gap:1rem;">
+            <div>
+              <h3 class="card-title" style="margin-bottom:0.25rem;">⚖️ Measurement Units</h3>
+              <p style="color:var(--text-muted); font-size:0.875rem; margin:0;">
+                Configure standard and customized units of measure (e.g. kg, L, ml, g, Quintal). Custom units can be manually added and managed.
+              </p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btnAddUnit"><span>+</span> Add Custom Unit</button>
           </div>
+
+          <!-- Search & Filter bar -->
+          <div style="display:flex; gap:0.75rem; align-items:center; margin-bottom:1rem;">
+            <input type="text" id="searchUnitsInput" class="form-control" placeholder="Search units by name or symbol..." style="max-width:320px; padding:0.4rem 0.75rem; font-size:0.85rem;" />
+          </div>
+
           <div class="table-wrap">
-            <table>
+            <table id="unitsTable">
               <thead>
                 <tr>
                   <th>Unit Name</th>
                   <th>Symbol</th>
+                  <th>Linked Products</th>
                   <th style="text-align:right;">Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                ${units.map(u => `
-                  <tr>
-                    <td><strong>${u.name}</strong></td>
-                    <td><span class="badge badge-muted">${u.symbol}</span></td>
-                    <td style="text-align:right;">
-                      <button class="btn btn-danger btn-sm btn-del-unit" data-id="${u.id}" data-name="${u.name}">🗑️</button>
-                    </td>
-                  </tr>
-                `).join('')}
+              <tbody id="unitsTbody">
+                <!-- Dynamically populated -->
               </tbody>
             </table>
           </div>
         </div>
       `;
 
+      const tbody = document.getElementById('unitsTbody');
+      const searchInput = document.getElementById('searchUnitsInput');
+
+      const renderUnitRows = () => {
+        const query = searchInput?.value.trim().toLowerCase() || '';
+        const filtered = units.filter(u => {
+          if (!query) return true;
+          return u.name.toLowerCase().includes(query) || u.symbol.toLowerCase().includes(query);
+        });
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:1.5rem; color:var(--text-muted);">No measurement units found matching "${query}".</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = filtered.map(u => {
+          const prodCount = u.product_count || 0;
+          return `
+            <tr>
+              <td><strong>${u.name}</strong></td>
+              <td><span class="badge badge-muted" style="font-weight:700;">${u.symbol}</span></td>
+              <td>
+                <span class="badge ${prodCount > 0 ? 'badge-green' : 'badge-muted'}">
+                  ${prodCount} product${prodCount === 1 ? '' : 's'}
+                </span>
+              </td>
+              <td style="text-align:right; white-space:nowrap;">
+                <button class="btn btn-ghost btn-sm btn-edit-unit" data-id="${u.id}" data-name="${u.name}" data-symbol="${u.symbol}" title="Edit Unit">✏️ Edit</button>
+                <button class="btn btn-danger btn-sm btn-del-unit" data-id="${u.id}" data-name="${u.name}" data-symbol="${u.symbol}" ${prodCount > 0 ? 'disabled title="Cannot delete unit used by active products"' : 'title="Delete Unit"'}>🗑️</button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        // Bind Edit buttons
+        tbody.querySelectorAll('.btn-edit-unit').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const uid = btn.dataset.id;
+            const uname = btn.dataset.name;
+            const usym = btn.dataset.symbol;
+
+            document.getElementById('modalUnitTitle').textContent = 'Edit Measurement Unit';
+            document.getElementById('unitEditId').value = uid;
+            document.getElementById('unitName').value = uname;
+            document.getElementById('unitSymbol').value = usym;
+
+            App.openModal('modalUnit');
+          });
+        });
+
+        // Bind Delete buttons
+        tbody.querySelectorAll('.btn-del-unit:not([disabled])').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const uName = btn.dataset.name;
+            const uSym = btn.dataset.symbol;
+            if (confirm(`Delete unit "${uName} (${uSym})"?`)) {
+              try {
+                const r = await fetch(`/api/units/${btn.dataset.id}`, { method: 'DELETE' });
+                const d = await r.json();
+                if (r.ok && d.success !== false) {
+                  App.showToast(`Unit "${uSym}" deleted.`);
+                  await App.loadMetadata();
+                  this.renderUnitsTab(container);
+                } else {
+                  App.showToast(d.message || 'Cannot delete unit.', 'error');
+                }
+              } catch (err) {
+                App.showToast('Network error deleting unit', 'error');
+              }
+            }
+          });
+        });
+      };
+
+      renderUnitRows();
+      searchInput?.addEventListener('input', renderUnitRows);
+
       document.getElementById('btnAddUnit')?.addEventListener('click', () => {
         document.getElementById('formUnit').reset();
+        document.getElementById('modalUnitTitle').textContent = 'Add Custom Measurement Unit';
+        document.getElementById('unitEditId').value = '';
         App.openModal('modalUnit');
-      });
-
-      container.querySelectorAll('.btn-del-unit').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          if (confirm(`Delete unit "${btn.dataset.name}"?`)) {
-            const r = await fetch(`/api/units/${btn.dataset.id}`, { method: 'DELETE' });
-            if (r.ok) {
-              App.showToast('Unit deleted.');
-              await App.loadMetadata();
-              this.renderUnitsTab(container);
-            } else {
-              App.showToast('Failed to delete unit', 'error');
-            }
-          }
-        });
       });
 
       const fUnit = document.getElementById('formUnit');
@@ -498,23 +574,32 @@ const SettingsView = {
         fUnit.dataset.bound = 'true';
         fUnit.addEventListener('submit', async (e) => {
           e.preventDefault();
+          const editId = document.getElementById('unitEditId').value;
           const payload = {
             name: document.getElementById('unitName').value.trim(),
             symbol: document.getElementById('unitSymbol').value.trim(),
           };
-          const r = await fetch('/api/units', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-          });
-          if (r.ok) {
-            App.showToast('Unit created.');
-            App.closeModal('modalUnit');
-            await App.loadMetadata();
-            SettingsView.renderUnitsTab(container);
-          } else {
-            const err = await r.json();
-            App.showToast(err.error || 'Failed to create unit', 'error');
+
+          const url = editId ? `/api/units/${editId}` : '/api/units';
+          const method = editId ? 'PUT' : 'POST';
+
+          try {
+            const r = await fetch(url, {
+              method,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const d = await r.json();
+            if (r.ok && d.success !== false) {
+              App.showToast(d.message || (editId ? 'Unit updated successfully.' : 'Custom unit created successfully!'));
+              App.closeModal('modalUnit');
+              await App.loadMetadata();
+              SettingsView.renderUnitsTab(container);
+            } else {
+              App.showToast(d.message || d.error || 'Failed to save unit.', 'error');
+            }
+          } catch (err) {
+            App.showToast('Network error saving unit: ' + err.message, 'error');
           }
         });
       }

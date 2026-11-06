@@ -5,6 +5,7 @@
 const PurchasesView = {
   params: {
     search: '',
+    payment_status: '',
     start_date: '',
     end_date: '',
     page: 1,
@@ -26,7 +27,7 @@ const PurchasesView = {
       <div class="page-header">
         <div>
           <h1 class="page-title">Purchases & Vendor Invoices</h1>
-          <small>Track input costs, vendor invoices, unit rates, and receipt attachments.</small>
+          <small>Track input costs, vendor invoices, unit rates, supplier credit, and receipt attachments.</small>
         </div>
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
           <button class="btn btn-secondary" id="btnExportPurchasesPdf">📄 PDF Report</button>
@@ -37,7 +38,14 @@ const PurchasesView = {
 
       <!-- Filters & Date Range Bar -->
       <div class="filters-bar">
-        <input type="text" id="purchSearch" placeholder="Search product, supplier, invoice..." value="${this.params.search}" />
+        <input type="text" id="purchSearch" placeholder="Search product, supplier, invoice, batch..." value="${this.params.search}" />
+
+        <select id="purchPaymentFilter">
+          <option value="" ${!this.params.payment_status ? 'selected' : ''}>All Payments</option>
+          <option value="Pending Credit" ${this.params.payment_status === 'Pending Credit' ? 'selected' : ''}>🟡 Pending Credit Only</option>
+          <option value="Paid" ${this.params.payment_status === 'Paid' ? 'selected' : ''}>🟢 Paid in Full</option>
+          <option value="Partial" ${this.params.payment_status === 'Partial' ? 'selected' : ''}>🟣 Partial Payment</option>
+        </select>
 
         <div style="display:flex; align-items:center; gap:0.4rem;">
           <label style="font-size:0.75rem; font-weight:600; color:var(--muted);">FROM:</label>
@@ -51,7 +59,7 @@ const PurchasesView = {
 
         <button class="btn btn-ghost btn-sm" id="btnResetPurchFilters">Reset</button>
 
-        <div style="margin-left:auto; display:flex; align-items:center; gap:0.5rem;" id="purchTotalSummary"></div>
+        <div style="margin-left:auto; display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;" id="purchTotalSummary"></div>
       </div>
 
       <!-- Table Container -->
@@ -73,6 +81,7 @@ const PurchasesView = {
 
     const q = new URLSearchParams();
     if (this.params.search) q.set('search', this.params.search);
+    if (this.params.payment_status) q.set('payment_status', this.params.payment_status);
     if (this.params.start_date) q.set('start_date', this.params.start_date);
     if (this.params.end_date) q.set('end_date', this.params.end_date);
     q.set('page', this.params.page);
@@ -82,16 +91,26 @@ const PurchasesView = {
       const res = await fetch(`/api/purchases?${q.toString()}`);
       if (!res.ok) throw new Error('Failed to load purchases');
       const data = await res.json();
-      this.renderTable(tableContainer, data.purchases || [], data.total || 0, data.pages || 1, data.total_cost || 0);
+      this.renderTable(
+        tableContainer,
+        data.purchases || [],
+        data.total || 0,
+        data.pages || 1,
+        data.total_cost || 0,
+        data.total_credit_pending || 0
+      );
     } catch (err) {
       tableContainer.innerHTML = `<div class="alert alert-error" style="margin:1rem;">Error: ${err.message}</div>`;
     }
   },
 
-  renderTable(container, purchases, total, totalPages, totalCost) {
+  renderTable(container, purchases, total, totalPages, totalCost, totalCreditPending) {
     const totalEl = document.getElementById('purchTotalSummary');
     if (totalEl) {
-      totalEl.innerHTML = `<span class="badge badge-green" style="font-size:0.85rem; padding:0.4rem 0.8rem;">Page Total: ₹${totalCost.toLocaleString('en-IN')}</span>`;
+      totalEl.innerHTML = `
+        <span class="badge badge-green" style="font-size:0.85rem; padding:0.35rem 0.75rem;">Page Total: ₹${totalCost.toLocaleString('en-IN')}</span>
+        ${totalCreditPending > 0 ? `<span class="badge badge-credit" style="font-size:0.85rem; padding:0.35rem 0.75rem;">Total Credit Pending: ₹${totalCreditPending.toLocaleString('en-IN')}</span>` : ''}
+      `;
     }
 
     if (!purchases.length) {
@@ -99,11 +118,13 @@ const PurchasesView = {
         <div class="empty-state">
           <div class="empty-icon">🛒</div>
           <h3>No purchases found</h3>
-          <p>No purchase records match the selected date range or search query.</p>
+          <p>No purchase records match the selected date range, payment status, or search query.</p>
         </div>`;
       document.getElementById('purchPaginationContainer').innerHTML = '';
       return;
     }
+
+    const todayStr = new Date().toISOString().split('T')[0];
 
     container.innerHTML = `
       <div class="table-wrap" style="border:none;">
@@ -111,23 +132,55 @@ const PurchasesView = {
           <thead>
             <tr>
               <th>Date</th>
-              <th>Product</th>
+              <th>Product & Batch</th>
               <th>Quantity</th>
               <th>Unit Rate</th>
               <th>Total Cost</th>
+              <th>Payment Status</th>
               <th>Supplier</th>
               <th>Invoice #</th>
-              <th>Bill Attachment</th>
+              <th>Bill</th>
               <th style="text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${purchases.map(p => `
+            ${purchases.map(p => {
+              let expBadge = '';
+              if (p.expiry_date) {
+                const isExpired = p.expiry_date < todayStr;
+                const daysDiff = Math.ceil((new Date(p.expiry_date) - new Date(todayStr)) / (1000 * 60 * 60 * 24));
+                if (isExpired) {
+                  expBadge = `<span class="badge badge-expired" style="font-size:0.68rem; margin-top:0.2rem; display:inline-block;">Expired (${p.expiry_date_formatted})</span>`;
+                } else if (daysDiff <= 30) {
+                  expBadge = `<span class="badge badge-expiry-warning" style="font-size:0.68rem; margin-top:0.2rem; display:inline-block;">Exp in ${daysDiff}d (${p.expiry_date_formatted})</span>`;
+                } else {
+                  expBadge = `<span style="font-size:0.72rem; color:var(--muted); display:inline-block; margin-top:0.15rem;">Exp: ${p.expiry_date_formatted}</span>`;
+                }
+              }
+
+              let payBadge = '';
+              const pStatus = p.payment_status || 'Paid';
+              if (pStatus === 'Paid') {
+                payBadge = `<span class="badge badge-paid" style="font-size:0.75rem;">🟢 PAID</span>`;
+              } else if (pStatus === 'Pending Credit') {
+                payBadge = `
+                  <button class="btn btn-xs badge-credit btn-toggle-pay" data-id="${p.id}" style="cursor:pointer;" title="Click to mark as Paid">
+                    🟡 PENDING CREDIT<br/><small style="text-decoration:underline;">Click: Mark Paid</small>
+                  </button>
+                  ${p.payment_due_date_formatted ? `<div style="font-size:0.7rem; color:#b45309; margin-top:0.2rem;">Due: ${p.payment_due_date_formatted}</div>` : ''}
+                `;
+              } else {
+                payBadge = `<span class="badge badge-partial" style="font-size:0.75rem;">🟣 ${pStatus.toUpperCase()}</span>`;
+              }
+
+              return `
               <tr>
                 <td><strong>${p.purchase_date}</strong></td>
                 <td>
                   <strong style="color:var(--text);">${p.product_name}</strong>
-                  ${p.remarks ? `<div style="font-size:0.75rem; color:var(--muted);">${p.remarks}</div>` : ''}
+                  ${p.batch_number ? `<div style="font-size:0.74rem; color:var(--text-mid); font-family:monospace;">Batch: ${p.batch_number}</div>` : ''}
+                  ${expBadge}
+                  ${p.remarks ? `<div style="font-size:0.74rem; color:var(--muted); margin-top:0.15rem;">${p.remarks}</div>` : ''}
                 </td>
                 <td>
                   ${p.package_summary ? `
@@ -139,6 +192,7 @@ const PurchasesView = {
                 </td>
                 <td>₹${(p.unit_price || 0).toLocaleString('en-IN')}</td>
                 <td><strong style="color:var(--green-dark);">₹${(p.total_price || 0).toLocaleString('en-IN')}</strong></td>
+                <td>${payBadge}</td>
                 <td>${p.supplier_name || '<span style="color:var(--muted);">—</span>'}</td>
                 <td>${p.invoice_number ? `<code>${p.invoice_number}</code>` : '<span style="color:var(--muted);">—</span>'}</td>
                 <td>
@@ -151,7 +205,8 @@ const PurchasesView = {
                   <button class="btn btn-danger btn-sm btn-delete-purchase" data-id="${p.id}" data-prod="${p.product_name}" data-qty="${p.quantity} ${p.unit || ''}" title="Delete & reverse stock">🗑️</button>
                 </td>
               </tr>
-            `).join('')}
+            `;
+            }).join('')}
           </tbody>
         </table>
       </div>
@@ -197,6 +252,12 @@ const PurchasesView = {
       }, 300);
     });
 
+    document.getElementById('purchPaymentFilter')?.addEventListener('change', (e) => {
+      this.params.payment_status = e.target.value;
+      this.params.page = 1;
+      this.fetchAndRenderList();
+    });
+
     document.getElementById('purchStartDate')?.addEventListener('change', (e) => {
       this.params.start_date = e.target.value;
       this.params.page = 1;
@@ -210,7 +271,7 @@ const PurchasesView = {
     });
 
     document.getElementById('btnResetPurchFilters')?.addEventListener('click', () => {
-      this.params = { search: '', start_date: '', end_date: '', page: 1, per_page: 15 };
+      this.params = { search: '', payment_status: '', start_date: '', end_date: '', page: 1, per_page: 15 };
       this.renderLayout();
       this.fetchAndRenderList();
     });
@@ -218,8 +279,12 @@ const PurchasesView = {
     document.getElementById('btnOpenNewPurchase')?.addEventListener('click', () => {
       document.getElementById('formPurchase').reset();
       const today = new Date().toISOString().split('T')[0];
-      document.getElementById('purchaseDate').value = today;
+      const dIn = document.getElementById('purchaseDate');
+      if (dIn) { dIn.value = today; dIn.style.borderColor = ''; }
       App.openModal('modalPurchase');
+      if (typeof App.syncPurchasePackagingUI === 'function') {
+        App.syncPurchasePackagingUI(true);
+      }
     });
 
     // Exports
@@ -239,6 +304,31 @@ const PurchasesView = {
   },
 
   bindRowActions(container) {
+    // Mark Paid toggle
+    container.querySelectorAll('.btn-toggle-pay').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        if (confirm(`Mark Purchase #${id} credit as PAID in full?`)) {
+          try {
+            const res = await fetch(`/api/purchases/${id}/payment`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ payment_status: 'Paid' }),
+            });
+            const data = await res.json();
+            if (res.ok && data.success !== false) {
+              App.showToast('Payment status marked as PAID!');
+              this.fetchAndRenderList();
+            } else {
+              App.showToast(data.message || 'Failed to update payment status', 'error');
+            }
+          } catch (err) {
+            App.showToast('Error: ' + err.message, 'error');
+          }
+        }
+      });
+    });
+
     container.querySelectorAll('.btn-delete-purchase').forEach(btn => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;

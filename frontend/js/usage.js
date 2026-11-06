@@ -5,6 +5,7 @@
 const UsageView = {
   params: {
     search: '',
+    crop_season: '',
     start_date: '',
     end_date: '',
     page: 1,
@@ -26,7 +27,7 @@ const UsageView = {
       <div class="page-header">
         <div>
           <h1 class="page-title">Usage & Application Logs</h1>
-          <small>Track consumption across fields, crops, spray schedules, and fertilizer applications.</small>
+          <small>Track consumption across fields, crops, seasons, spray schedules, and fertilizer applications.</small>
         </div>
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
           <button class="btn btn-secondary" id="btnExportUsagePdf">📄 PDF Report</button>
@@ -38,6 +39,7 @@ const UsageView = {
       <!-- Filters & Date Range Bar -->
       <div class="filters-bar">
         <input type="text" id="usageSearch" placeholder="Search product, field, reason..." value="${this.params.search}" />
+        <input type="text" id="usageSeasonFilter" placeholder="Filter crop/season..." value="${this.params.crop_season}" list="cropSeasonDatalist" style="max-width:180px;" />
 
         <div style="display:flex; align-items:center; gap:0.4rem;">
           <label style="font-size:0.75rem; font-weight:600; color:var(--muted);">FROM:</label>
@@ -71,6 +73,7 @@ const UsageView = {
 
     const q = new URLSearchParams();
     if (this.params.search) q.set('search', this.params.search);
+    if (this.params.crop_season) q.set('crop_season', this.params.crop_season);
     if (this.params.start_date) q.set('start_date', this.params.start_date);
     if (this.params.end_date) q.set('end_date', this.params.end_date);
     q.set('page', this.params.page);
@@ -106,7 +109,7 @@ const UsageView = {
               <th>Date</th>
               <th>Product</th>
               <th>Quantity Used</th>
-              <th>Field / Location</th>
+              <th>Field / Location & Crop</th>
               <th>Purpose / Reason</th>
               <th>Remarks</th>
               <th style="text-align:right;">Actions</th>
@@ -127,6 +130,7 @@ const UsageView = {
                 </td>
                 <td>
                   <span class="badge badge-muted">📍 ${u.field_location || 'General'}</span>
+                  ${u.crop_season ? `<div style="margin-top:0.25rem;"><span class="badge badge-green" style="font-size:0.7rem;">🌾 ${u.crop_season}</span></div>` : ''}
                 </td>
                 <td>${u.reason || '<span style="color:var(--muted);">—</span>'}</td>
                 <td>${u.remarks || '<span style="color:var(--muted);">—</span>'}</td>
@@ -180,6 +184,15 @@ const UsageView = {
       }, 300);
     });
 
+    document.getElementById('usageSeasonFilter')?.addEventListener('input', (e) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        this.params.crop_season = e.target.value.trim();
+        this.params.page = 1;
+        this.fetchAndRenderList();
+      }, 300);
+    });
+
     document.getElementById('usageStartDate')?.addEventListener('change', (e) => {
       this.params.start_date = e.target.value;
       this.params.page = 1;
@@ -193,7 +206,7 @@ const UsageView = {
     });
 
     document.getElementById('btnResetUsageFilters')?.addEventListener('click', () => {
-      this.params = { search: '', start_date: '', end_date: '', page: 1, per_page: 15 };
+      this.params = { search: '', crop_season: '', start_date: '', end_date: '', page: 1, per_page: 15 };
       this.renderLayout();
       this.fetchAndRenderList();
     });
@@ -202,8 +215,12 @@ const UsageView = {
       document.getElementById('formUsage').reset();
       document.getElementById('usageStockHint').textContent = '';
       const today = new Date().toISOString().split('T')[0];
-      document.getElementById('usageDate').value = today;
+      const dIn = document.getElementById('usageDate');
+      if (dIn) { dIn.value = today; dIn.style.borderColor = ''; }
       App.openModal('modalUsage');
+      if (typeof App.syncUsagePackagingUI === 'function') {
+        App.syncUsagePackagingUI();
+      }
     });
 
     // Exports

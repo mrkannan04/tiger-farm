@@ -1,0 +1,18 @@
+{
+  "name": "Tiger Farm Management",
+  "short_name": "Tiger Farm",
+  "description": "Smart Agricultural Inventory & Farm Input Management",
+  "start_url": "/app.html",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F4F7F4",
+  "theme_color": "#2D6A4F",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐯</text></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, session
 from ..models import db, Product, Category, Unit, ActivityLog, StockMovement, PackageMaster, ProductPackageStock
-from ..utils.validators import validate_product
+from ..utils.validators import validate_product, parse_date
 from ..services.stock_service import (
-    _check_and_update_notifications, get_product_stock_history, reconcile_product_stock
+    _check_and_update_notifications, get_product_stock_history, reconcile_product_stock, record_stock_adjustment
 )
 from datetime import date
 
@@ -491,6 +491,7 @@ def delete_product(product_id):
         return jsonify({'success': False, 'message': f'Delete failed: {str(e)}', 'error': str(e)}), 500
 
 
+
 # ── Categories ───────────────────────────────────────────────────────────────
 
 @products_bp.route('/api/categories', methods=['GET'])
@@ -585,7 +586,11 @@ def delete_category(cat_id):
 def list_units():
     _require_auth()
     units = Unit.query.order_by(Unit.name).all()
-    unit_list = [u.to_dict() for u in units]
+    unit_list = []
+    for u in units:
+        d = u.to_dict()
+        d['product_count'] = len(u.products) if hasattr(u, 'products') else 0
+        unit_list.append(d)
     return jsonify({
         'success': True,
         'units': unit_list,
@@ -605,19 +610,60 @@ def create_unit():
         return jsonify({'success': False, 'message': 'Unit name and symbol are required.', 'error': 'Unit name and symbol are required.'}), 400
     if Unit.query.filter(db.func.lower(Unit.symbol) == symbol.lower()).first():
         return jsonify({'success': False, 'message': f'Unit "{symbol}" already exists.', 'error': f'Unit "{symbol}" already exists.'}), 409
+    if Unit.query.filter(db.func.lower(Unit.name) == name.lower()).first():
+        return jsonify({'success': False, 'message': f'Unit name "{name}" already exists.', 'error': f'Unit name "{name}" already exists.'}), 409
     try:
         unit = Unit(name=name, symbol=symbol)
         db.session.add(unit)
         db.session.commit()
+        d = unit.to_dict()
+        d['product_count'] = 0
         return jsonify({
             'success': True,
             'message': f'Unit "{symbol}" created successfully.',
-            'unit': unit.to_dict(),
-            'data': unit.to_dict(),
+            'unit': d,
+            'data': d,
         }), 201
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Failed to create unit: {str(e)}', 'error': str(e)}), 500
+
+
+@products_bp.route('/api/units/<int:unit_id>', methods=['PUT'])
+def update_unit(unit_id):
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+    unit = Unit.query.get_or_404(unit_id)
+    data = request.get_json() or {}
+    name = (data.get('name') or '').strip()
+    symbol = (data.get('symbol') or '').strip()
+    if not name or not symbol:
+        return jsonify({'success': False, 'message': 'Unit name and symbol are required.', 'error': 'Unit name and symbol are required.'}), 400
+
+    dup_sym = Unit.query.filter(db.func.lower(Unit.symbol) == symbol.lower(), Unit.id != unit_id).first()
+    if dup_sym:
+        return jsonify({'success': False, 'message': f'Unit symbol "{symbol}" is already used by another unit.', 'error': f'Unit symbol "{symbol}" already exists.'}), 409
+
+    dup_name = Unit.query.filter(db.func.lower(Unit.name) == name.lower(), Unit.id != unit_id).first()
+    if dup_name:
+        return jsonify({'success': False, 'message': f'Unit name "{name}" is already used by another unit.', 'error': f'Unit name "{name}" already exists.'}), 409
+
+    try:
+        unit.name = name
+        unit.symbol = symbol
+        db.session.commit()
+        d = unit.to_dict()
+        d['product_count'] = len(unit.products) if hasattr(unit, 'products') else 0
+        return jsonify({
+            'success': True,
+            'message': f'Unit "{symbol}" updated successfully.',
+            'unit': d,
+            'data': d,
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Failed to update unit: {str(e)}', 'error': str(e)}), 500
 
 
 @products_bp.route('/api/units/<int:unit_id>', methods=['DELETE'])
@@ -797,4 +843,59 @@ def delete_package(pkg_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Delete failed: {str(e)}', 'error': str(e)}), 500
+
+
+@products_bp.route('/api/stock/adjust', methods=['POST'])
+def adjust_stock():
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    product_id = data.get('product_id')
+    if not product_id:
+        return jsonify({'success': False, 'message': 'Product is required.'}), 400
+
+    adjustment_type = data.get('adjustment_type', 'deduction')  # addition or deduction
+    reason = data.get('reason', 'Damaged / Spillage')
+    remarks = data.get('remarks')
+    adjustment_date = parse_date(data.get('adjustment_date')) or date.today()
+
+    qty_val = float(data['quantity']) if (data.get('quantity') is not None and str(data.get('quantity')).strip() != '') else None
+    package_count = float(data['package_count']) if (data.get('package_count') is not None and str(data.get('package_count')).strip() != '') else None
+    package_size = float(data['package_size']) if (data.get('package_size') is not None and str(data.get('package_size')).strip() != '') else None
+
+    movement, error = record_stock_adjustment(
+        product_id=int(product_id),
+        adjustment_type=adjustment_type,
+        quantity=qty_val,
+        packaging_type=data.get('packaging_type'),
+        package_size=package_size,
+        package_unit=data.get('package_unit'),
+        package_count=package_count,
+        reason=reason,
+        remarks=remarks,
+        adjustment_date=adjustment_date
+    )
+    if error:
+        return jsonify({'success': False, 'message': error, 'error': error}), 400
+
+    product = Product.query.get(int(product_id))
+    try:
+        db.session.add(ActivityLog(
+            user_id=session.get('user_id'),
+            action=f"Stock Adjustment ({adjustment_type.title()}): {movement.remarks} for {product.name if product else ''}. New Balance: {product.current_quantity if product else 0:g} {product.unit.symbol if product and product.unit else ''}.",
+            entity_type='stock_adjustment',
+            entity_id=product.id if product else None,
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return jsonify({
+        'success': True,
+        'message': f"Stock adjusted successfully. New stock: {product.current_quantity:g} {product.unit.symbol if product and product.unit else ''}.",
+        'movement': movement.to_dict(),
+        'product': product.to_dict(),
+    }), 201
+
 

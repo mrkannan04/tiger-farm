@@ -778,6 +778,64 @@ tbody td {
   margin-top: .3rem;
 }
 
+/* Quantity Stepper (+ and - buttons) */
+.qty-stepper {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+}
+
+.qty-stepper input {
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 700;
+  border-radius: 0 !important;
+  flex: 1;
+  min-width: 0;
+  z-index: 1;
+}
+
+.qty-stepper .btn-qty-minus,
+.qty-stepper .btn-qty-plus {
+  background: #f1f5f3;
+  border: 1.5px solid var(--border);
+  color: var(--green-dark);
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  width: 46px;
+  min-width: 46px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  user-select: none;
+}
+
+.qty-stepper .btn-qty-minus {
+  border-right: none;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.qty-stepper .btn-qty-plus {
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.qty-stepper .btn-qty-minus:hover,
+.qty-stepper .btn-qty-plus:hover {
+  background: var(--green-light);
+  color: #1b4332;
+  border-color: var(--green-mid);
+}
+
+.qty-stepper .btn-qty-minus:active,
+.qty-stepper .btn-qty-plus:active {
+  background: var(--green-mid);
+  color: #fff;
+}
+
 /* ── Filters bar ────────────────────────────────────────────────── */
 .filters-bar {
   display: flex;
@@ -1537,4 +1595,153 @@ html, body {
   color: var(--text-mid);
   font-weight: 500;
 }
+
+/* ── Voice-to-Text Speech Recognition ── */
+.btn-voice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-mid);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-voice:hover {
+  background: rgba(45, 106, 79, 0.08);
+  color: var(--green-dark);
+  border-color: var(--green-mid);
+}
+
+.btn-voice.listening {
+  background: #FEE2E2;
+  color: #C1292E;
+  border-color: #EF4444;
+  animation: pulse-voice 1.2s infinite;
+}
+
+@keyframes pulse-voice {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  70% { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+/* ── Sprayer Tank Dosage Calculator ── */
+.dosage-calculator-card {
+  background: linear-gradient(135deg, rgba(216, 243, 220, 0.35), rgba(244, 247, 244, 0.7));
+  border: 1.5px solid rgba(82, 183, 136, 0.4);
+  border-radius: var(--radius);
+  margin-bottom: 1rem;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.dosage-calc-header {
+  padding: 0.65rem 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.6);
+  user-select: none;
+}
+
+.dosage-calc-header:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.dosage-calc-body {
+  padding: 0.85rem 0.9rem;
+  border-top: 1px solid rgba(82, 183, 136, 0.25);
+  background: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Price Comparison Badge ── */
+.rate-compare-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-sm);
+  margin-top: 0.35rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.rate-compare-pill.rate-up {
+  background: #FEE2E2;
+  color: #991B1B;
+  border-color: #FCA5A5;
+}
+
+.rate-compare-pill.rate-down {
+  background: #D8F3DC;
+  color: #1B4332;
+  border-color: #95D5B2;
+}
+
+.rate-compare-pill.rate-same {
+  background: #F3F4F6;
+  color: #4B5563;
+  border-color: #E5E7EB;
+}
+
+/* ── Payment Status Badges ── */
+.badge-paid {
+  background: #D8F3DC;
+  color: #1B4332;
+  font-weight: 700;
+  border: 1px solid #95D5B2;
+}
+
+.badge-credit {
+  background: #FEF3C7;
+  color: #92400E;
+  font-weight: 700;
+  border: 1px solid #FCD34D;
+}
+
+.badge-partial {
+  background: #EDE9FE;
+  color: #5B21B6;
+  font-weight: 700;
+  border: 1px solid #C4B5FD;
+}
+
+.badge-expiry-warning {
+  background: #FEF3C7;
+  color: #B45309;
+  font-weight: 700;
+  border: 1px solid #FCD34D;
+}
+
+.badge-expired {
+  background: #FEE2E2;
+  color: #991B1B;
+  font-weight: 700;
+  border: 1px solid #FCA5A5;
+}
+
+/* ── Digest Modal Textarea ── */
+.digest-box {
+  background: #f8fafc;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 1rem;
+  font-family: monospace, sans-serif;
+  font-size: 0.88rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 380px;
+  overflow-y: auto;
+  color: #1e293b;
+  line-height: 1.5;
+}
+
 

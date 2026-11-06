@@ -40,6 +40,10 @@ const ProductsView = {
         </div>
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
           <button class="btn btn-secondary" id="btnExportProductsCsv">📥 Export CSV</button>
+          <button class="btn btn-secondary" id="btnExportProductsPdf">📄 Export PDF</button>
+          <button class="btn btn-secondary" id="btnStockAdjustTop">⚖️ Stock Adjustment</button>
+          <button class="btn btn-secondary" data-view="settings" data-tab="packages" title="Manage Reusable Package Sizes & Units">📦 Unit & Package Master</button>
+          <button class="btn btn-secondary" data-view="settings" data-tab="units" title="Manage Custom Measurement Units">⚖️ Units of Measure</button>
           <button class="btn btn-primary" id="btnAddNewProduct"><span>+</span> Add Product</button>
         </div>
       </div>
@@ -351,6 +355,20 @@ const ProductsView = {
     // Export CSV
     document.getElementById('btnExportProductsCsv')?.addEventListener('click', () => {
       window.open('/api/export/products', '_blank');
+    });
+
+    // Export PDF (Detailed Product List Report)
+    document.getElementById('btnExportProductsPdf')?.addEventListener('click', () => {
+      const q = new URLSearchParams();
+      if (this.params.category_id) q.set('category_id', this.params.category_id);
+      if (this.params.status) q.set('status', this.params.status);
+      if (this.params.search) q.set('search', this.params.search);
+      window.open(`/api/reports/products/pdf?${q.toString()}`, '_blank');
+    });
+
+    // Stock Adjustment Modal
+    document.getElementById('btnStockAdjustTop')?.addEventListener('click', () => {
+      App.openAdjustmentModal();
     });
 
     // Submit Product Form with database confirmation check (Section 15)
