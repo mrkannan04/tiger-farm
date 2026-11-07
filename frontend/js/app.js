@@ -20,10 +20,23 @@ const App = {
   views: {},
 
   init() {
-    this.bindEvents();
+    // Purge any legacy Service Worker and clear stale browser CacheStorage
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      navigator.serviceWorker.getRegistrations().then(registrations => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      }).catch(() => {});
     }
+    if ('caches' in window) {
+      caches.keys().then(names => {
+        for (let name of names) {
+          caches.delete(name);
+        }
+      }).catch(() => {});
+    }
+
+    this.bindEvents();
     this.checkAuth().then(authed => {
       if (authed) {
         this.loadMetadata();

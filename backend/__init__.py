@@ -40,10 +40,9 @@ def create_app(config_name='default'):
     @app.after_request
     def set_cache_control(response):
         """Ensure static assets and responses are never cached stalely by mobile browsers."""
-        if 'Cache-Control' not in response.headers:
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
         return response
 
     @app.route('/')
