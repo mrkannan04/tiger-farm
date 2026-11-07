@@ -1197,7 +1197,6 @@ const App = {
     });
 
     this.initVoiceTyping();
-    this.initDosageCalculator();
 
     // Quick Add Package from Add Product modal
     document.getElementById('btnQuickAddPackage')?.addEventListener('click', (e) => {
@@ -1935,83 +1934,6 @@ const App = {
         }
       };
     });
-  },
-
-  // ── Sprayer Dosage Calculator ─────────────────────────────────────────────
-  initDosageCalculator() {
-    const toggleBtn = document.getElementById('toggleDosageCalc');
-    const body = document.getElementById('dosageCalcBody');
-    const toggleIcon = document.getElementById('dosageToggleIcon');
-    const tankSizeSelect = document.getElementById('dosageTankSize');
-    const customGroup = document.getElementById('dosageCustomTankGroup');
-    const customTank = document.getElementById('dosageCustomTank');
-    const doseRate = document.getElementById('dosageDoseRate');
-    const tankCount = document.getElementById('dosageTankCount');
-    const requiredText = document.getElementById('dosageRequiredText');
-    const btnApply = document.getElementById('btnApplyDosage');
-
-    if (!toggleBtn || !body) return;
-
-    toggleBtn.onclick = () => {
-      const isHidden = body.style.display === 'none';
-      body.style.display = isHidden ? 'block' : 'none';
-      if (toggleIcon) toggleIcon.textContent = isHidden ? '▲ Collapse' : '▼ Expand Helper';
-    };
-
-    const updateCalc = () => {
-      const isCustom = tankSizeSelect.value === 'custom';
-      if (customGroup) customGroup.style.display = isCustom ? 'block' : 'none';
-
-      const capacity = isCustom ? (parseFloat(customTank?.value) || 0) : (parseFloat(tankSizeSelect.value) || 0);
-      const rate = parseFloat(doseRate?.value) || 0;
-      const count = parseFloat(tankCount?.value) || 1;
-
-      const totalRequired = capacity * rate * count;
-      const totalInBase = totalRequired / 1000;
-
-      if (requiredText) {
-        if (totalRequired > 0) {
-          requiredText.textContent = `${totalRequired.toLocaleString()} ml/g (${totalInBase.toFixed(3)} L/kg)`;
-        } else {
-          requiredText.textContent = '0 ml (0 L)';
-        }
-      }
-      return { totalRequired, totalInBase };
-    };
-
-    [tankSizeSelect, customTank, doseRate, tankCount].forEach(el => {
-      el?.addEventListener('input', updateCalc);
-      el?.addEventListener('change', updateCalc);
-    });
-
-    if (btnApply) {
-      btnApply.onclick = () => {
-        const { totalRequired, totalInBase } = updateCalc();
-        if (totalRequired <= 0) {
-          App.showToast('Please enter valid dilution dose rate and tank capacity first.', 'error');
-          return;
-        }
-
-        const uProd = document.getElementById('usageProduct');
-        const prodId = uProd?.value;
-        const prod = App.state.products.find(p => p.id == prodId);
-        const isLiquid = prod && (prod.unit || '').toLowerCase().startsWith('l');
-
-        const uPkgType = document.getElementById('usagePkgType');
-        const uPkgCount = document.getElementById('usagePkgCount');
-
-        if (uPkgType) {
-          uPkgType.value = 'Loose';
-          App.syncUsagePackagingSizes();
-          if (uPkgCount) {
-            uPkgCount.value = totalInBase;
-            uPkgCount.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }
-
-        App.showToast(`Applied ${totalRequired} ml/g (${totalInBase.toFixed(3)} ${isLiquid ? 'L' : 'kg'}) to usage quantity!`);
-      };
-    }
   },
 };
 

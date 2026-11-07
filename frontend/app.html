@@ -393,52 +393,6 @@
           </div>
         </div>
 
-        <!-- Sprayer Tank / Pump Dosage Calculator -->
-        <div class="dosage-calculator-card" id="dosageCalcCard">
-          <div class="dosage-calc-header" id="toggleDosageCalc">
-            <span style="font-weight:700; font-size:0.85rem; color:var(--green-dark); display:flex; align-items:center; gap:0.4rem;">
-              <span>🧮</span> Sprayer Tank / Backpack Pump Dosage Calculator
-            </span>
-            <span class="dosage-toggle-icon" id="dosageToggleIcon" style="font-size:0.75rem; color:var(--text-mid);">▼ Expand Helper</span>
-          </div>
-          <div class="dosage-calc-body" id="dosageCalcBody" style="display:none;">
-            <div class="form-row" style="margin-bottom:0.5rem;">
-              <div class="form-group" style="margin-bottom:0.4rem;">
-                <label for="dosageTankSize" style="font-size:0.75rem;">Tank / Pump Capacity</label>
-                <select id="dosageTankSize" style="font-size:0.8rem; padding:0.35rem 0.6rem;">
-                  <option value="16" selected>16 Liter Backpack Pump</option>
-                  <option value="20">20 Liter Backpack Pump</option>
-                  <option value="10">10 Liter Hand Sprayer</option>
-                  <option value="50">50 Liter Trolley Tank</option>
-                  <option value="200">200 Liter Drum / Tractor Sprayer</option>
-                  <option value="custom">Custom Tank Size...</option>
-                </select>
-              </div>
-              <div class="form-group" id="dosageCustomTankGroup" style="display:none; margin-bottom:0.4rem;">
-                <label for="dosageCustomTank" style="font-size:0.75rem;">Custom Capacity (L)</label>
-                <input type="number" id="dosageCustomTank" step="any" min="1" placeholder="e.g. 100" style="font-size:0.8rem; padding:0.35rem 0.6rem;" />
-              </div>
-            </div>
-            <div class="form-row" style="margin-bottom:0.5rem;">
-              <div class="form-group" style="margin-bottom:0.4rem;">
-                <label for="dosageDoseRate" style="font-size:0.75rem;">Dosage per Liter (ml or g)</label>
-                <input type="number" id="dosageDoseRate" step="any" min="0" placeholder="e.g. 2 ml/L or 1.5 g/L" style="font-size:0.8rem; padding:0.35rem 0.6rem;" />
-              </div>
-              <div class="form-group" style="margin-bottom:0.4rem;">
-                <label for="dosageTankCount" style="font-size:0.75rem;">No. of Tanks / Pumps</label>
-                <input type="number" id="dosageTankCount" min="1" step="1" value="1" style="font-size:0.8rem; padding:0.35rem 0.6rem;" />
-              </div>
-            </div>
-            <div class="dosage-result-box" style="display:flex; justify-content:space-between; align-items:center; background:#fff; padding:0.5rem 0.75rem; border-radius:6px; border:1px solid #d8f3dc; margin-bottom:0.5rem;">
-              <span style="font-size:0.78rem; color:var(--text-mid);">Computed Requirement:</span>
-              <strong id="dosageRequiredText" style="font-size:0.92rem; color:var(--green-dark);">0 ml (0 L)</strong>
-            </div>
-            <button type="button" class="btn btn-secondary btn-sm" id="btnApplyDosage" style="width:100%; font-size:0.8rem; font-weight:700;">
-              ⚡ Apply to Quantity Used
-            </button>
-          </div>
-        </div>
-
         <div class="form-group">
           <label for="usagePkgCount" id="usagePkgCountLabel">4. Quantity Used *</label>
           <div class="qty-stepper">
@@ -1124,15 +1078,15 @@
 </div>
 
 <!-- JavaScript Application Modules -->
-<script src="/js/app.js?v=2.6.0"></script>
-<script src="/js/dashboard.js?v=2.6.0"></script>
-<script src="/js/products.js?v=2.6.0"></script>
-<script src="/js/purchases.js?v=2.6.0"></script>
-<script src="/js/usage.js?v=2.6.0"></script>
-<script src="/js/analytics.js?v=2.6.0"></script>
-<script src="/js/notifications.js?v=2.6.0"></script>
-<script src="/js/reports.js?v=2.6.0"></script>
-<script src="/js/settings.js?v=2.6.0"></script>
+<script src="/js/app.js?v=2.7.0"></script>
+<script src="/js/dashboard.js?v=2.7.0"></script>
+<script src="/js/products.js?v=2.7.0"></script>
+<script src="/js/purchases.js?v=2.7.0"></script>
+<script src="/js/usage.js?v=2.7.0"></script>
+<script src="/js/analytics.js?v=2.7.0"></script>
+<script src="/js/notifications.js?v=2.7.0"></script>
+<script src="/js/reports.js?v=2.7.0"></script>
+<script src="/js/settings.js?v=2.7.0"></script>
 
 </body>
 </html>

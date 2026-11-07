@@ -1631,36 +1631,6 @@ html, body {
   100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
 }
 
-/* ── Sprayer Tank Dosage Calculator ── */
-.dosage-calculator-card {
-  background: linear-gradient(135deg, rgba(216, 243, 220, 0.35), rgba(244, 247, 244, 0.7));
-  border: 1.5px solid rgba(82, 183, 136, 0.4);
-  border-radius: var(--radius);
-  margin-bottom: 1rem;
-  overflow: hidden;
-  transition: all 0.2s ease;
-}
-
-.dosage-calc-header {
-  padding: 0.65rem 0.9rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.6);
-  user-select: none;
-}
-
-.dosage-calc-header:hover {
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.dosage-calc-body {
-  padding: 0.85rem 0.9rem;
-  border-top: 1px solid rgba(82, 183, 136, 0.25);
-  background: rgba(255, 255, 255, 0.4);
-}
-
 /* ── Price Comparison Badge ── */
 .rate-compare-pill {
   display: inline-flex;
