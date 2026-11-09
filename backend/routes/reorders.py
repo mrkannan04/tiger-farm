@@ -218,6 +218,13 @@ def update_reorder(reorder_id):
         if 'total_price' in data and data['total_price'] not in (None, ''):
             reorder.total_price = float(data['total_price'])
 
+        if reorder.unit_price and not reorder.total_price:
+            count = reorder.package_count if (reorder.package_count and (reorder.packaging_type or '').lower() != 'loose') else reorder.quantity
+            reorder.total_price = round(reorder.unit_price * count, 2)
+        elif reorder.total_price and not reorder.unit_price:
+            count = reorder.package_count if (reorder.package_count and (reorder.packaging_type or '').lower() != 'loose') else reorder.quantity
+            reorder.unit_price = round(reorder.total_price / count, 2) if count > 0 else 0.0
+
         db.session.commit()
         return jsonify({
             'success': True,
@@ -235,6 +242,7 @@ def receive_reorder_endpoint(reorder_id):
     Confirm receipt of a reorder:
     - Atomically increments product stock and ProductPackageStock breakdown.
     - Updates reorder status to 'Received' or 'Partially Received'.
+    - Automatically creates a completed Purchase record in the Purchases section.
     - Records audit log in StockMovement with user and previous quantity.
     """
     auth_err = _require_auth()
@@ -244,10 +252,25 @@ def receive_reorder_endpoint(reorder_id):
     data = request.get_json(silent=True) or request.form.to_dict() or {}
     recv_qty = data.get('received_quantity')
 
+    p_date = parse_date(data.get('purchase_date')) if data.get('purchase_date') else None
+    unit_price = float(data['unit_price']) if (data.get('unit_price') not in (None, '') and str(data['unit_price']).strip() != '') else None
+    total_price = float(data['total_price']) if (data.get('total_price') not in (None, '') and str(data['total_price']).strip() != '') else None
+    supplier_name = (data.get('supplier_name') or data.get('supplier') or '').strip() or None
+    invoice_number = (data.get('invoice_number') or '').strip() or None
+    payment_status = (data.get('payment_status') or 'Paid').strip()
+    remarks = (data.get('remarks') or data.get('notes') or '').strip() or None
+
     reorder, error = receive_reorder(
         reorder_id=reorder_id,
         received_quantity=float(recv_qty) if (recv_qty not in (None, '') and str(recv_qty).strip() != '') else None,
         user_id=session.get('user_id'),
+        purchase_date=p_date,
+        unit_price=unit_price,
+        total_price=total_price,
+        supplier_name=supplier_name,
+        invoice_number=invoice_number,
+        payment_status=payment_status,
+        remarks=remarks,
     )
 
     if error:
@@ -255,10 +278,12 @@ def receive_reorder_endpoint(reorder_id):
 
     product = reorder.product
     unit_sym = product.unit.symbol if product and product.unit else ''
+    purchase = getattr(reorder, 'created_purchase', None)
     return jsonify({
         'success': True,
-        'message': f"Confirmed receipt for Reorder #{reorder.id}. Current stock of {product.name} is now {product.current_quantity:g} {unit_sym} (Status: {reorder.status}).",
+        'message': f"Confirmed receipt for Reorder #{reorder.id}. Current stock of {product.name} is now {product.current_quantity:g} {unit_sym} (Recorded in Purchases as #{purchase.id if purchase else ''}).",
         'reorder': reorder.to_dict(),
+        'purchase': purchase.to_dict() if purchase else None,
         'product': product.to_dict(),
     })
 

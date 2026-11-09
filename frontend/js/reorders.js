@@ -108,6 +108,7 @@ const ReordersView = {
   },
 
   renderTable(container, reorders, total, totalPages) {
+    this.currentReorders = reorders;
     if (!reorders.length) {
       container.innerHTML = `
         <div class="empty-state">
@@ -129,6 +130,7 @@ const ReordersView = {
               <th>Product & Package</th>
               <th>Current Stock</th>
               <th>Reorder Quantity</th>
+              <th>Rate / Cost</th>
               <th>Supplier</th>
               <th>Expected Arrival</th>
               <th>Status</th>
@@ -170,6 +172,10 @@ const ReordersView = {
                   <td>
                     <strong style="font-size:0.95rem; color:var(--green-dark);">${r.quantity} ${r.product_unit || ''}</strong>
                     ${r.received_quantity > 0 ? `<div style="font-size:0.75rem; color:#7e22ce;">Recv: ${r.received_quantity} (Rem: ${r.remaining_quantity})</div>` : ''}
+                  </td>
+                  <td>
+                    ${r.unit_price ? `<div style="font-size:0.82rem; font-weight:600;">₹${r.unit_price} <span style="font-size:0.72rem; color:var(--muted);">/ unit</span></div>` : ''}
+                    ${r.total_price ? `<div style="font-size:0.88rem; font-weight:700; color:var(--green-dark);">₹${(r.total_price).toLocaleString('en-IN')}</div>` : (r.unit_price ? '' : '<span style="color:var(--muted); font-size:0.8rem;">—</span>')}
                   </td>
                   <td>
                     <div>${r.supplier_name || '<span style="color:var(--muted);">Direct / General</span>'}</div>
@@ -287,19 +293,22 @@ const ReordersView = {
     container.querySelectorAll('.btn-receive-reorder').forEach(btn => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
-        const name = btn.dataset.name;
-        const summary = btn.dataset.summary;
-        const rem = btn.dataset.rem;
-        const supp = btn.dataset.supp;
-
-        document.getElementById('receiveReorderId').value = id;
-        document.getElementById('receiveProdName').textContent = name;
-        document.getElementById('receiveSummaryText').textContent = summary || 'Reorder #' + id;
-        document.getElementById('receiveSupplierName').textContent = supp || 'General Supplier';
-        document.getElementById('receiveReorderQty').value = rem || '';
-        document.getElementById('receiveRemainingHint').textContent = `Total pending to receive: ${rem}`;
-
-        App.openModal('modalReceiveReorder');
+        const reorder = (this.currentReorders || []).find(r => r.id == id);
+        if (reorder && typeof App.openReceiveReorderModal === 'function') {
+          App.openReceiveReorderModal(reorder);
+        } else {
+          const name = btn.dataset.name;
+          const summary = btn.dataset.summary;
+          const rem = btn.dataset.rem;
+          const supp = btn.dataset.supp;
+          App.openReceiveReorderModal({
+            id,
+            product_name: name,
+            package_summary: summary,
+            remaining_quantity: rem,
+            supplier_name: supp,
+          });
+        }
       });
     });
 

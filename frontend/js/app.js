@@ -1280,15 +1280,21 @@ const App = {
         btn.disabled = true;
         btn.textContent = 'Saving Reorder Request...';
 
+        const sizeSel = document.getElementById('reorderPkgSize');
+        const selOpt = sizeSel?.options[sizeSel.selectedIndex];
+        const pkgUnit = selOpt ? selOpt.dataset.unit : null;
+
         const payload = {
           product_id: parseInt(rProdIn.value, 10),
           packaging_type: document.getElementById('reorderPkgType')?.value || 'Bag',
           package_size: parseFloat(document.getElementById('reorderPkgSize')?.value) || 0,
+          package_unit: pkgUnit,
           package_count: count,
           reorder_date: rDateIn.value,
           expected_delivery_date: document.getElementById('reorderExpectedDelivery')?.value || null,
           supplier_name: document.getElementById('reorderSupplier')?.value || null,
           unit_price: parseFloat(document.getElementById('reorderUnitPrice')?.value) || null,
+          total_price: parseFloat(document.getElementById('reorderTotalPrice')?.value) || null,
           notes: document.getElementById('reorderNotes')?.value || null,
         };
 
@@ -1318,7 +1324,7 @@ const App = {
       });
     }
 
-    // Form Receive Reorder Submit
+    // Form Receive Reorder Submit (Confirmed receipt creates a Purchase entry)
     const fReceive = document.getElementById('formReceiveReorder');
     if (fReceive) {
       fReceive.addEventListener('submit', async (e) => {
@@ -1336,23 +1342,42 @@ const App = {
           return;
         }
 
+        const purchDate = document.getElementById('receivePurchaseDate')?.value;
+        if (!purchDate) {
+          this.showToast('Please select the Received / Purchase Date.', 'error');
+          document.getElementById('receivePurchaseDate')?.focus();
+          return;
+        }
+
         const btn = document.getElementById('btnConfirmReceive');
         btn.disabled = true;
-        btn.textContent = 'Updating Inventory Stock...';
+        btn.textContent = 'Updating Stock & Adding to Purchases...';
+
+        const payload = {
+          received_quantity: qty,
+          purchase_date: purchDate,
+          unit_price: parseFloat(document.getElementById('receiveUnitPrice')?.value) || null,
+          total_price: parseFloat(document.getElementById('receiveTotalPrice')?.value) || null,
+          invoice_number: document.getElementById('receiveInvoiceNumber')?.value.trim() || null,
+          payment_status: document.getElementById('receivePaymentStatus')?.value || 'Paid',
+        };
 
         try {
           const res = await fetch(`/api/reorders/${reorderId}/receive`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ received_quantity: qty }),
+            body: JSON.stringify(payload),
           });
           const data = await res.json();
           if (res.ok && data.success !== false) {
-            this.showToast(data.message || `Reorder #${reorderId} received and stock updated!`);
+            this.showToast(data.message || `Reorder #${reorderId} received, stock updated, and added to Purchases!`);
             this.closeModal('modalReceiveReorder');
             await this.loadMetadata();
             if (this.views[this.state.currentView]?.refresh) {
               this.views[this.state.currentView].refresh();
+            }
+            if (this.views['purchases']?.fetchAndRenderList) {
+              this.views['purchases'].fetchAndRenderList();
             }
           } else {
             this.showToast(data.message || data.error || 'Failed to receive reorder.', 'error');
@@ -1361,7 +1386,7 @@ const App = {
           this.showToast('Error receiving reorder: ' + err.message, 'error');
         } finally {
           btn.disabled = false;
-          btn.textContent = 'Confirm & Update Stock';
+          btn.textContent = 'Confirm & Add to Purchases';
         }
       });
     }
@@ -1592,16 +1617,89 @@ const App = {
       this.recalcAdjustTotal();
     });
 
-    // 4. Reorder packaging setup
+    // 4. Reorder packaging & pricing setup
     const rProd = document.getElementById('reorderProduct');
     const rPkgType = document.getElementById('reorderPkgType');
     const rPkgSize = document.getElementById('reorderPkgSize');
     const rPkgCount = document.getElementById('reorderPkgCount');
+    const rUnitPrice = document.getElementById('reorderUnitPrice');
+    const rTotalPrice = document.getElementById('reorderTotalPrice');
 
     rProd?.addEventListener('change', () => this.syncReorderPackagingUI());
     rPkgType?.addEventListener('change', () => this.syncReorderPackagingSizes());
     rPkgSize?.addEventListener('change', () => this.recalcReorderTotal());
     rPkgCount?.addEventListener('input', () => this.recalcReorderTotal());
+    rUnitPrice?.addEventListener('input', () => this.recalcReorderTotal());
+    rTotalPrice?.addEventListener('input', () => {
+      const count = parseFloat(rPkgCount?.value) || 1;
+      const total = parseFloat(rTotalPrice?.value) || 0;
+      if (count > 0 && total > 0 && rUnitPrice) {
+        rUnitPrice.value = Math.round((total / count) * 100) / 100;
+      }
+      this.recalcReorderTotal();
+    });
+
+    document.getElementById('btnReorderMinus')?.addEventListener('click', () => {
+      if (rPkgCount) {
+        const val = Math.max(1, (parseFloat(rPkgCount.value) || 1) - 1);
+        rPkgCount.value = val;
+        this.recalcReorderTotal();
+      }
+    });
+    document.getElementById('btnReorderPlus')?.addEventListener('click', () => {
+      if (rPkgCount) {
+        const val = (parseFloat(rPkgCount.value) || 0) + 1;
+        rPkgCount.value = val;
+        this.recalcReorderTotal();
+      }
+    });
+
+    document.getElementById('btnReorderDateToday')?.addEventListener('click', () => {
+      const d = document.getElementById('reorderDate');
+      if (d) d.value = new Date().toISOString().split('T')[0];
+    });
+    document.getElementById('btnReorderDateYesterday')?.addEventListener('click', () => {
+      const d = document.getElementById('reorderDate');
+      if (d) {
+        const dt = new Date();
+        dt.setDate(dt.getDate() - 1);
+        d.value = dt.toISOString().split('T')[0];
+      }
+    });
+
+    // Receive modal pricing & date helpers
+    document.getElementById('btnReceiveDateToday')?.addEventListener('click', () => {
+      const d = document.getElementById('receivePurchaseDate');
+      if (d) d.value = new Date().toISOString().split('T')[0];
+    });
+    document.getElementById('btnReceiveDateYesterday')?.addEventListener('click', () => {
+      const d = document.getElementById('receivePurchaseDate');
+      if (d) {
+        const dt = new Date();
+        dt.setDate(dt.getDate() - 1);
+        d.value = dt.toISOString().split('T')[0];
+      }
+    });
+    document.getElementById('receiveUnitPrice')?.addEventListener('input', () => {
+      const uIn = document.getElementById('receiveUnitPrice');
+      const tIn = document.getElementById('receiveTotalPrice');
+      const qIn = document.getElementById('receiveReorderQty');
+      const unitP = parseFloat(uIn?.value) || 0;
+      const q = parseFloat(qIn?.value) || 0;
+      if (unitP > 0 && q > 0 && tIn) {
+        tIn.value = Math.round(unitP * q * 100) / 100;
+      }
+    });
+    document.getElementById('receiveTotalPrice')?.addEventListener('input', () => {
+      const uIn = document.getElementById('receiveUnitPrice');
+      const tIn = document.getElementById('receiveTotalPrice');
+      const qIn = document.getElementById('receiveReorderQty');
+      const totalP = parseFloat(tIn?.value) || 0;
+      const q = parseFloat(qIn?.value) || 0;
+      if (totalP > 0 && q > 0 && uIn) {
+        uIn.value = Math.round((totalP / q) * 100) / 100;
+      }
+    });
 
     // 5. Add Stock packaging setup
     const asProd = document.getElementById('addStockProduct');
@@ -2232,23 +2330,22 @@ const App = {
     const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || baseUnit === 'liter' || (prod.name || '').toLowerCase().includes('liquid'));
 
     const prevType = rPkgType.value;
-    if (isLiquid) {
-      rPkgType.innerHTML = `
-        <option value="Bottle">Bottle (Liter / L / ml)</option>
-        <option value="Container">Can / Container (Liter / L)</option>
-        <option value="Drum">Drum / Barrel (Liter / L)</option>
-        <option value="Pouch">Pouch / Packet (L / ml)</option>
-        <option value="Loose">Loose / Direct Liters (L)</option>
-      `;
-    } else {
-      rPkgType.innerHTML = `
+    rPkgType.innerHTML = `
+      <optgroup label="🌱 SOLID / KG PACKAGING">
         <option value="Bag">Bag (KG Packages)</option>
         <option value="Pouch">Pouch / Packet (KG / g)</option>
         <option value="Container">Box / Container (KG)</option>
         <option value="Drum">Drum (KG)</option>
         <option value="Loose">Loose / Direct Kilograms (KG)</option>
-      `;
-    }
+      </optgroup>
+      <optgroup label="💧 LIQUID / LITER PACKAGING">
+        <option value="Bottle">Bottle (Liter / L / ml)</option>
+        <option value="Container">Can / Container (Liter / L)</option>
+        <option value="Drum">Drum / Barrel (Liter / L)</option>
+        <option value="Pouch">Pouch / Packet (L / ml)</option>
+        <option value="Loose">Loose / Direct Liters (L)</option>
+      </optgroup>
+    `;
 
     if (forceDefault || document.activeElement === rProd || !prevType) {
       rPkgType.value = prod.default_packaging_type || (isLiquid ? 'Bottle' : 'Bag');
@@ -2266,22 +2363,27 @@ const App = {
     const rPkgSize = document.getElementById('reorderPkgSize');
     const rPkgSizeGroup = document.getElementById('reorderPkgSizeGroup');
     const rCountLabel = document.getElementById('reorderPkgCountLabel');
+    const rRateLabel = document.getElementById('reorderUnitPriceLabel');
 
     if (!rProd || !rPkgType || !rPkgSize) return;
 
     const prod = this.state.products.find(p => p.id == rProd.value);
     const baseUnit = (prod && prod.unit) ? prod.unit.toLowerCase() : 'kg';
-    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || (prod && prod.name.toLowerCase().includes('liquid')));
+    const selOpt = rPkgType.options[rPkgType.selectedIndex];
+    const isLiquidOpt = selOpt && selOpt.parentElement && selOpt.parentElement.label && selOpt.parentElement.label.includes('LIQUID');
+    const isLiquid = isLiquidOpt || (baseUnit === 'l' || baseUnit === 'ml' || (prod && prod.name.toLowerCase().includes('liquid')));
     const selType = rPkgType.value || (isLiquid ? 'Bottle' : 'Bag');
 
     if (selType.toLowerCase() === 'loose') {
       if (rPkgSizeGroup) rPkgSizeGroup.style.display = 'none';
       const uLabel = isLiquid ? 'Liters (L)' : 'Kilograms (KG)';
       if (rCountLabel) rCountLabel.textContent = `4. Reorder Quantity (${uLabel} Direct) *`;
+      if (rRateLabel) rRateLabel.textContent = `Rate (₹ per ${isLiquid ? 'L' : 'kg'})`;
     } else {
       if (rPkgSizeGroup) rPkgSizeGroup.style.display = 'block';
       const noun = isLiquid ? (selType === 'Bottle' ? 'Bottles' : `${selType}s`) : (selType === 'Bag' ? 'Bags' : `${selType}s`);
       if (rCountLabel) rCountLabel.textContent = `4. Reorder Quantity (Number of ${noun}) *`;
+      if (rRateLabel) rRateLabel.textContent = `Rate (₹ per ${selType})`;
 
       let matching = (this.state.packages || []).filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
       if (isLiquid) {
@@ -2304,6 +2406,8 @@ const App = {
               { package_size: 1, unit_symbol: 'L', base_multiplier: 1, label: `1 L ${selType}` },
               { package_size: 2, unit_symbol: 'L', base_multiplier: 2, label: `2 L ${selType}` },
               { package_size: 5, unit_symbol: 'L', base_multiplier: 5, label: `5 L ${selType}` },
+              { package_size: 10, unit_symbol: 'L', base_multiplier: 10, label: `10 L ${selType}` },
+              { package_size: 20, unit_symbol: 'L', base_multiplier: 20, label: `20 L ${selType}` },
             ]
           : [
               { package_size: 50, unit_symbol: 'g', base_multiplier: 0.05, label: `50 g ${selType}` },
@@ -2339,6 +2443,9 @@ const App = {
     const rPkgSize = document.getElementById('reorderPkgSize');
     const rPkgCount = document.getElementById('reorderPkgCount');
     const rCalcResult = document.getElementById('reorderCalcResult');
+    const rPriceCalc = document.getElementById('reorderPriceCalcResult');
+    const rUnitPrice = document.getElementById('reorderUnitPrice');
+    const rTotalPrice = document.getElementById('reorderTotalPrice');
 
     if (!rProd || !rPkgType || !rPkgCount || !rCalcResult) return;
 
@@ -2346,20 +2453,41 @@ const App = {
     const baseSym = (prod && prod.unit) ? prod.unit : 'kg';
     const pkgType = rPkgType.value || 'Bag';
     const count = parseFloat(rPkgCount.value) || 0;
+    const unitPrice = parseFloat(rUnitPrice?.value) || 0;
 
+    let totalQty = count;
     if (pkgType.toLowerCase() === 'loose') {
-      rCalcResult.innerHTML = `<strong>${count} ${baseSym} Loose</strong>`;
+      rCalcResult.innerHTML = `<span>📦 Total Reorder Quantity:</span> <strong>${count} ${baseSym} Loose</strong>`;
     } else {
       const opt = rPkgSize.options[rPkgSize.selectedIndex];
       if (opt && opt.value) {
         const size = parseFloat(opt.value) || 0;
         const unit = opt.dataset.unit || baseSym;
         const mult = parseFloat(opt.dataset.multiplier) || size;
-        const total = Math.round(count * mult * 10000) / 10000;
+        totalQty = Math.round(count * mult * 10000) / 10000;
         const noun = count === 1 ? pkgType : (pkgType.endsWith('s') ? pkgType : pkgType + 's');
-        rCalcResult.innerHTML = `<strong>${count} × ${size} ${unit} ${noun} = ${total} ${baseSym}</strong>`;
+        rCalcResult.innerHTML = `<span>📦 Total Reorder Quantity:</span> <strong>${count} × ${size} ${unit} ${noun} = ${totalQty} ${baseSym}</strong>`;
       } else {
-        rCalcResult.innerHTML = `<strong>0 ${baseSym}</strong>`;
+        rCalcResult.innerHTML = `<span>📦 Total Reorder Quantity:</span> <strong>0 ${baseSym}</strong>`;
+      }
+    }
+
+    // Price calculation
+    const multForPrice = pkgType.toLowerCase() === 'loose' ? totalQty : count;
+    let computedTotal = Math.round(unitPrice * multForPrice * 100) / 100;
+
+    if (rTotalPrice && document.activeElement !== rTotalPrice && unitPrice > 0) {
+      rTotalPrice.value = computedTotal;
+    } else if (rTotalPrice && parseFloat(rTotalPrice.value) > 0) {
+      computedTotal = parseFloat(rTotalPrice.value);
+    }
+
+    if (rPriceCalc) {
+      if (computedTotal > 0) {
+        const perNoun = pkgType.toLowerCase() === 'loose' ? baseSym : pkgType;
+        rPriceCalc.innerHTML = `💰 <strong>Estimated Total Amount: ₹${computedTotal.toLocaleString('en-IN')}</strong> ${unitPrice > 0 ? `(@ ₹${unitPrice} / ${perNoun})` : ''}`;
+      } else {
+        rPriceCalc.innerHTML = '';
       }
     }
   },
@@ -2412,17 +2540,44 @@ const App = {
     if (prodName) prodName.textContent = reorder.product_name || `Product #${reorder.product_id}`;
 
     const summaryText = document.getElementById('receiveSummaryText');
-    if (summaryText) summaryText.textContent = `${reorder.quantity} (${reorder.package_summary || reorder.packaging_type || ''})`;
+    if (summaryText) summaryText.textContent = `${reorder.quantity} ${reorder.product_unit || ''} (${reorder.package_summary || reorder.packaging_type || ''})`;
 
     const suppName = document.getElementById('receiveSupplierName');
-    if (suppName) suppName.textContent = reorder.supplier_name || 'N/A';
+    if (suppName) suppName.textContent = reorder.supplier_name || 'General Supplier';
 
     const remaining = reorder.remaining_quantity != null ? reorder.remaining_quantity : (reorder.quantity - (reorder.received_quantity || 0));
     const qtyIn = document.getElementById('receiveReorderQty');
     if (qtyIn) qtyIn.value = Math.max(0, remaining);
 
     const hint = document.getElementById('receiveRemainingHint');
-    if (hint) hint.textContent = `Total pending to receive: ${remaining}`;
+    if (hint) hint.textContent = `Total pending to receive: ${remaining} ${reorder.product_unit || ''}`;
+
+    const dateIn = document.getElementById('receivePurchaseDate');
+    if (dateIn) dateIn.value = new Date().toISOString().split('T')[0];
+
+    const rateIn = document.getElementById('receiveUnitPrice');
+    if (rateIn) rateIn.value = (reorder.unit_price !== undefined && reorder.unit_price !== null) ? reorder.unit_price : '';
+
+    const rateLabel = document.getElementById('receiveUnitPriceLabel');
+    if (rateLabel) {
+      const noun = (reorder.packaging_type && reorder.packaging_type.toLowerCase() !== 'loose') ? reorder.packaging_type : (reorder.product_unit || 'unit');
+      rateLabel.textContent = `Purchase Rate (₹ per ${noun})`;
+    }
+
+    const totalIn = document.getElementById('receiveTotalPrice');
+    if (totalIn) {
+      if (reorder.total_price) {
+        totalIn.value = reorder.total_price;
+      } else if (reorder.unit_price && remaining > 0) {
+        const pkgCount = (reorder.package_count && reorder.quantity > 0) ? Math.round((remaining / reorder.quantity) * reorder.package_count * 100) / 100 : remaining;
+        totalIn.value = Math.round(reorder.unit_price * pkgCount * 100) / 100;
+      } else {
+        totalIn.value = '';
+      }
+    }
+
+    const invIn = document.getElementById('receiveInvoiceNumber');
+    if (invIn) invIn.value = `RO-${reorder.id}`;
 
     this.openModal('modalReceiveReorder');
   },

@@ -652,14 +652,18 @@ def check_expiry_notifications():
         print(f"[WARN] check_expiry_notifications error: {e}")
 
 
-def receive_reorder(reorder_id, received_quantity=None, user_id=None):
+def receive_reorder(reorder_id, received_quantity=None, user_id=None,
+                    purchase_date=None, unit_price=None, total_price=None,
+                    supplier_name=None, invoice_number=None, payment_status=None,
+                    remarks=None):
     """
     Transaction-first reorder receipt:
     1. Verify reorder exists and is eligible for receipt.
     2. Update received quantity and determine status (Received vs Partially Received).
     3. Increment product stock and ProductPackageStock breakdown atomically.
-    4. Log StockMovement with type REORDER_RECEIVED, tracking user and previous quantity.
-    5. Commit transaction atomically.
+    4. Automatically create an official Purchase record in purchases table.
+    5. Log StockMovement with type REORDER_RECEIVED, tracking user and previous quantity.
+    6. Commit transaction atomically.
     Returns (reorder, None) on success or (None, error_msg) on failure.
     """
     reorder = Reorder.query.get(reorder_id)
@@ -691,7 +695,8 @@ def receive_reorder(reorder_id, received_quantity=None, user_id=None):
         old_stock = product.current_quantity or 0.0
         new_received_total = round((reorder.received_quantity or 0.0) + recv_qty, 4)
         reorder.received_quantity = new_received_total
-        reorder.received_date = date.today()
+        actual_recv_date = purchase_date or date.today()
+        reorder.received_date = actual_recv_date
 
         if reorder.received_quantity >= reorder.quantity:
             reorder.status = 'Received'
@@ -730,6 +735,7 @@ def receive_reorder(reorder_id, received_quantity=None, user_id=None):
                     total_quantity=round(recv_qty, 4)
                 ))
         else:
+            bag_count_delta = recv_qty
             # Loose package stock
             loose_item = ProductPackageStock.query.filter(
                 ProductPackageStock.product_id == product.id,
@@ -748,6 +754,22 @@ def receive_reorder(reorder_id, received_quantity=None, user_id=None):
                     total_quantity=recv_qty
                 ))
 
+        # Pricing calculation for the purchase entry
+        eff_unit_price = unit_price if unit_price is not None else reorder.unit_price
+        eff_total_price = total_price if total_price is not None else reorder.total_price
+
+        if eff_unit_price is not None and eff_total_price is None:
+            mult_val = bag_count_delta if (pkg_type and pkg_type.lower() != 'loose') else recv_qty
+            eff_total_price = round(eff_unit_price * mult_val, 2)
+        elif eff_total_price is not None and eff_unit_price is None:
+            div_val = bag_count_delta if (pkg_type and pkg_type.lower() != 'loose') else recv_qty
+            eff_unit_price = round(eff_total_price / div_val, 2) if div_val > 0 else 0.0
+
+        if unit_price is not None:
+            reorder.unit_price = unit_price
+        if total_price is not None:
+            reorder.total_price = total_price
+
         # Record stock movement ledger
         movement = StockMovement(
             product_id=product.id,
@@ -759,15 +781,40 @@ def receive_reorder(reorder_id, received_quantity=None, user_id=None):
             user_id=user_id,
             packaging_type=pkg_type,
             package_summary=reorder.package_summary or f"{recv_qty:g} {unit_sym}",
-            movement_date=date.today(),
+            movement_date=actual_recv_date,
             remarks=f"Reorder #{reorder.id} received: +{recv_qty:g} {unit_sym} (Status: {reorder.status}) from {reorder.supplier or 'Supplier'}",
         )
         db.session.add(movement)
 
+        # Create official Purchase record so this received reorder displays in the Purchases section
+        purchase = Purchase(
+            product_id=product.id,
+            quantity=recv_qty,
+            unit_id=product.unit_id,
+            packaging_type=pkg_type,
+            package_size=p_size,
+            package_unit=p_unit,
+            package_count=bag_count_delta if (pkg_type and pkg_type.lower() != 'loose') else recv_qty,
+            package_summary=reorder.package_summary or f"{recv_qty:g} {unit_sym}",
+            unit_price=eff_unit_price,
+            total_price=eff_total_price,
+            purchase_date=actual_recv_date,
+            supplier_id=reorder.supplier_id,
+            supplier_name=supplier_name or reorder.supplier or reorder.supplier_name or 'General Supplier',
+            invoice_number=invoice_number or f"RO-{reorder.id}",
+            payment_status=payment_status or 'Paid',
+            status='Completed',
+            remarks=f"Received from Reorder #{reorder.id}. {remarks or ''}".strip(),
+        )
+        db.session.add(purchase)
+        db.session.flush()
+
+        reorder.created_purchase = purchase
+
         # Activity log
         db.session.add(ActivityLog(
             user_id=user_id,
-            action=f"Confirmed receipt of Reorder #{reorder.id}: +{recv_qty:g} {unit_sym} of {product.name}. Status: '{reorder.status}'.",
+            action=f"Confirmed receipt of Reorder #{reorder.id}: +{recv_qty:g} {unit_sym} of {product.name} (Recorded in Purchases as #{purchase.id}). Status: '{reorder.status}'.",
             entity_type='reorder',
             entity_id=reorder.id,
         ))

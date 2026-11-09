@@ -1077,12 +1077,20 @@
           <div class="form-group">
             <label for="reorderPkgType">2. Package Type *</label>
             <select id="reorderPkgType" name="packaging_type" required>
-              <option value="Bag" selected>Bag</option>
-              <option value="Bottle">Bottle</option>
-              <option value="Pouch">Pouch</option>
-              <option value="Container">Container</option>
-              <option value="Drum">Drum</option>
-              <option value="Loose">Loose</option>
+              <optgroup label="🌱 SOLID / KG PACKAGING">
+                <option value="Bag" selected>Bag (KG Packages)</option>
+                <option value="Pouch">Pouch / Packet (KG / g)</option>
+                <option value="Container">Box / Container (KG)</option>
+                <option value="Drum">Drum (KG)</option>
+                <option value="Loose">Loose / Direct Kilograms (KG)</option>
+              </optgroup>
+              <optgroup label="💧 LIQUID / LITER PACKAGING">
+                <option value="Bottle">Bottle (Liter / L / ml)</option>
+                <option value="Container">Can / Container (Liter / L)</option>
+                <option value="Drum">Drum / Barrel (Liter / L)</option>
+                <option value="Pouch">Pouch / Packet (L / ml)</option>
+                <option value="Loose">Loose / Direct Liters (L)</option>
+              </optgroup>
             </select>
           </div>
           <div class="form-group" id="reorderPkgSizeGroup">
@@ -1103,11 +1111,11 @@
           </div>
         </div>
 
-        <!-- Reorder Calculation Card -->
+        <!-- Reorder Calculation Card with Quantity & Price -->
         <div class="calculation-card" id="reorderCalculationCard" style="display:block; margin-bottom:1rem;">
           <div class="calc-formula">
-            <span>📦 Total Reorder Quantity:</span>
-            <strong id="reorderCalcResult">0 kg</strong>
+            <div id="reorderCalcResult"><strong>0 kg</strong></div>
+            <div id="reorderPriceCalcResult" style="font-size:0.85rem; color:var(--green-dark); margin-top:0.25rem; font-weight:600;"></div>
           </div>
           <span class="calc-badge" style="background:var(--amber);">Pending Request</span>
         </div>
@@ -1134,7 +1142,7 @@
           </div>
         </div>
 
-        <!-- Supplier & Cost -->
+        <!-- Supplier & Cost with Live Auto Calculation -->
         <div class="form-row">
           <div class="form-group">
             <label for="reorderSupplier">Supplier / Vendor</label>
@@ -1142,8 +1150,12 @@
             <datalist id="reorderSupplierDatalist"></datalist>
           </div>
           <div class="form-group">
-            <label for="reorderUnitPrice">Estimated Rate (₹ / unit)</label>
+            <label for="reorderUnitPrice" id="reorderUnitPriceLabel">Rate (₹ / unit or package)</label>
             <input type="number" step="any" min="0" id="reorderUnitPrice" name="unit_price" placeholder="Rate per unit" />
+          </div>
+          <div class="form-group">
+            <label for="reorderTotalPrice">Estimated Total Cost (₹)</label>
+            <input type="number" step="any" min="0" id="reorderTotalPrice" name="total_price" placeholder="Auto calculated" />
           </div>
         </div>
 
@@ -1197,13 +1209,64 @@
           <div class="form-hint" id="receiveRemainingHint" style="font-weight:600; color:var(--amber); margin-top:0.3rem;"></div>
         </div>
 
+        <!-- Compulsory Receipt / Purchase Date -->
+        <div class="form-group" style="background:rgba(45,106,79,0.06); padding:0.75rem 0.9rem; border-radius:8px; border:1.5px solid rgba(45,106,79,0.25); margin-bottom:1rem;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.35rem;">
+            <label for="receivePurchaseDate" style="margin-bottom:0; font-weight:700; color:var(--green-dark); font-size:0.85rem;">
+              📅 Received / Purchase Date *
+            </label>
+            <span class="badge badge-yellow" style="font-size:0.68rem; font-weight:700;">REQUIRED</span>
+          </div>
+          <input type="date" id="receivePurchaseDate" name="purchase_date" required style="font-weight:600; font-size:0.92rem;" />
+          <div style="display:flex; gap:0.4rem; margin-top:0.45rem;">
+            <button type="button" class="btn btn-ghost btn-xs" id="btnReceiveDateToday" style="padding:0.2rem 0.5rem; font-size:0.75rem;">Today</button>
+            <button type="button" class="btn btn-ghost btn-xs" id="btnReceiveDateYesterday" style="padding:0.2rem 0.5rem; font-size:0.75rem;">Yesterday</button>
+          </div>
+          <div class="form-hint" style="font-size:0.74rem; color:var(--text-mid); margin-top:0.35rem;">
+            This will be recorded as the official purchase date in your Purchases section.
+          </div>
+        </div>
+
+        <!-- Price Confirmation & Calculation -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="receiveUnitPrice" id="receiveUnitPriceLabel">Purchase Rate (₹ / unit or package)</label>
+            <input type="number" step="any" min="0" id="receiveUnitPrice" name="unit_price" placeholder="Rate per unit" />
+          </div>
+          <div class="form-group">
+            <label for="receiveTotalPrice">Total Purchase Amount (₹)</label>
+            <input type="number" step="any" min="0" id="receiveTotalPrice" name="total_price" placeholder="Auto calculated" />
+          </div>
+        </div>
+
+        <!-- Invoice / Bill & Payment Status -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="receiveInvoiceNumber">Invoice / Bill # (Optional)</label>
+            <input type="text" id="receiveInvoiceNumber" name="invoice_number" placeholder="e.g. BILL-9281" />
+          </div>
+          <div class="form-group">
+            <label for="receivePaymentStatus">Payment Status</label>
+            <select id="receivePaymentStatus" name="payment_status">
+              <option value="Paid" selected>🟢 Paid in Full</option>
+              <option value="Pending Credit">🟡 Pending Credit (Udhar / Pay Later)</option>
+              <option value="Partial">🟣 Partial Payment</option>
+            </select>
+          </div>
+        </div>
+
         <div class="alert alert-info" style="font-size:0.82rem; padding:0.65rem 0.85rem; border-radius:6px; background:rgba(45,106,79,0.08); border:1px solid var(--green-mid);">
-          ✅ Clicking <strong>"Confirm Receipt"</strong> will atomically add this quantity to active inventory stock and log an official stock movement ledger entry.
+          ✅ Clicking <strong>"Confirm & Add to Purchases"</strong> will:
+          <ul style="margin:0.25rem 0 0 1.1rem; padding:0; font-size:0.78rem; line-height:1.4;">
+            <li>Atomically add this received quantity to active inventory stock.</li>
+            <li>Create an official completed record in the <strong>Purchases section</strong>.</li>
+            <li>Log an audit movement in the stock ledger.</li>
+          </ul>
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-ghost" data-close-modal>Cancel</button>
-        <button type="submit" class="btn btn-primary" id="btnConfirmReceive">Confirm & Update Stock</button>
+        <button type="submit" class="btn btn-primary" id="btnConfirmReceive">Confirm & Add to Purchases</button>
       </div>
     </form>
   </div>
