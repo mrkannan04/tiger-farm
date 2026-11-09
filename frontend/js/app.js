@@ -13,7 +13,7 @@ const App = {
     suppliers: [],
     fields: [],
     packages: [],
-    packagingTypes: ['Bag', 'Bottle', 'Pouch', 'Container', 'Drum', 'Loose'],
+    packagingTypes: ['Bag', 'Bottle', 'Pouch', 'Container', 'Drum', 'Box', 'Can', 'Bundle', 'Pieces', 'Packet', 'Loose', 'Custom'],
     unreadCount: 0,
   },
 
@@ -195,10 +195,23 @@ const App = {
     const adjustProd = document.getElementById('adjustProduct');
     if (adjustProd) adjustProd.innerHTML = prodOpts;
 
+    const reorderProd = document.getElementById('reorderProduct');
+    if (reorderProd) reorderProd.innerHTML = prodOpts;
+
+    const addStockProd = document.getElementById('addStockProduct');
+    if (addStockProd) addStockProd.innerHTML = prodOpts;
+
+    const editStockProd = document.getElementById('editStockProduct');
+    if (editStockProd) editStockProd.innerHTML = prodOpts;
+
     // Supplier datalist
     const supDl = document.getElementById('supplierDatalist');
     if (supDl) {
       supDl.innerHTML = this.state.suppliers.map(s => `<option value="${s.name}"></option>`).join('');
+    }
+    const reorderSupDl = document.getElementById('reorderSupplierDatalist');
+    if (reorderSupDl) {
+      reorderSupDl.innerHTML = this.state.suppliers.map(s => `<option value="${s.name}"></option>`).join('');
     }
 
     // Field datalist
@@ -433,6 +446,7 @@ const App = {
     const titleMap = {
       dashboard: 'Dashboard',
       products: 'Products & Stock Management',
+      reorders: 'Stock Reorders & Replenishment',
       purchases: 'Purchase History & Invoices',
       usage: 'Product Usage Records',
       analytics: 'Farm Analytics & Cost Trends',
@@ -531,6 +545,23 @@ const App = {
             }
           }
         });
+
+        // Update Pending Reorders Badge
+        fetch('/api/reorders?status=Pending&per_page=1')
+          .then(r => r.json())
+          .then(rData => {
+            const reorderBadge = document.getElementById('navReorderBadge');
+            if (reorderBadge) {
+              const pendingCount = rData.pending_count || 0;
+              if (pendingCount > 0) {
+                reorderBadge.textContent = pendingCount;
+                reorderBadge.style.display = 'inline-block';
+              } else {
+                reorderBadge.style.display = 'none';
+              }
+            }
+          })
+          .catch(() => {});
 
         // Trigger Immediate Stock Alerts
         const urgentAlerts = data.urgent_alerts || (data.notifications || []).filter(n => n.type === 'low_stock' || n.type === 'out_of_stock');
@@ -704,6 +735,10 @@ const App = {
     // Logout: Terminates user session only; never destroys farm database records
     const handleLogout = async () => {
       if (confirm('Are you sure you want to sign out? Your farm data remains completely safe in the database.')) {
+        try {
+          sessionStorage.clear();
+          localStorage.clear();
+        } catch (_) {}
         await fetch('/api/auth/logout', { method: 'POST' });
         window.location.href = '/';
       }
@@ -827,6 +862,98 @@ const App = {
     });
     document.getElementById('btnAdjustDateYesterday')?.addEventListener('click', () => {
       const el = document.getElementById('adjustDate');
+      if (el) { el.value = getOffsetDate(1); el.style.borderColor = ''; }
+    });
+
+    // Quick Date chips & Steppers for Reorders
+    document.getElementById('btnReorderDateToday')?.addEventListener('click', () => {
+      const el = document.getElementById('reorderDate');
+      if (el) { el.value = getOffsetDate(0); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnReorderDateYesterday')?.addEventListener('click', () => {
+      const el = document.getElementById('reorderDate');
+      if (el) { el.value = getOffsetDate(1); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnReorderPlus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('reorderPkgCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(1, Math.round(cur + 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('btnReorderMinus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('reorderPkgCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 1;
+      inEl.value = Math.max(1, Math.round(cur - 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Steppers for Receive Reorder
+    document.getElementById('btnReceivePlus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('receiveReorderQty');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.round((cur + 1) * 100) / 100;
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('btnReceiveMinus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('receiveReorderQty');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 1;
+      inEl.value = Math.max(0.01, Math.round((cur - 1) * 100) / 100);
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Steppers for Add Stock
+    document.getElementById('btnAddStockPlus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('addStockCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(1, Math.round(cur + 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('btnAddStockMinus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('addStockCount');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 1;
+      inEl.value = Math.max(1, Math.round(cur - 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Quick Date chips for Add Stock
+    document.getElementById('btnAddStockDateToday')?.addEventListener('click', () => {
+      const el = document.getElementById('addStockDate');
+      if (el) { el.value = getOffsetDate(0); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnAddStockDateYesterday')?.addEventListener('click', () => {
+      const el = document.getElementById('addStockDate');
+      if (el) { el.value = getOffsetDate(1); el.style.borderColor = ''; }
+    });
+
+    // Steppers for Edit Stock
+    document.getElementById('btnEditStockPlus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('editStockTargetQty');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(0, Math.round(cur + 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.getElementById('btnEditStockMinus')?.addEventListener('click', () => {
+      const inEl = document.getElementById('editStockTargetQty');
+      if (!inEl) return;
+      const cur = parseFloat(inEl.value) || 0;
+      inEl.value = Math.max(0, Math.round(cur - 1));
+      inEl.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+
+    // Quick Date chips for Edit Stock
+    document.getElementById('btnEditStockDateToday')?.addEventListener('click', () => {
+      const el = document.getElementById('editStockDate');
+      if (el) { el.value = getOffsetDate(0); el.style.borderColor = ''; }
+    });
+    document.getElementById('btnEditStockDateYesterday')?.addEventListener('click', () => {
+      const el = document.getElementById('editStockDate');
       if (el) { el.value = getOffsetDate(1); el.style.borderColor = ''; }
     });
 
@@ -1106,10 +1233,247 @@ const App = {
       });
     }
 
-    // Digest Modal buttons
-    document.getElementById('btnRefreshDigest')?.addEventListener('click', () => {
-      this.openDailyFarmDigest();
-    });
+    // Form Reorder Submit
+    const fReorder = document.getElementById('formReorder');
+    if (fReorder) {
+      fReorder.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const rProdIn = document.getElementById('reorderProduct');
+        const rDateIn = document.getElementById('reorderDate');
+        const rCountIn = document.getElementById('reorderPkgCount');
+        if (!rProdIn || !rProdIn.value) {
+          this.showToast('Please select a product to reorder.', 'error');
+          return;
+        }
+        if (!rDateIn || !rDateIn.value.trim()) {
+          this.showToast('Reorder Date is compulsory! Please select the date.', 'error');
+          rDateIn?.focus();
+          return;
+        }
+        const count = parseFloat(rCountIn?.value) || 0;
+        if (count <= 0) {
+          this.showToast('Please enter a valid reorder quantity greater than zero.', 'error');
+          rCountIn?.focus();
+          return;
+        }
+
+        const btn = document.getElementById('btnSubmitReorder');
+        btn.disabled = true;
+        btn.textContent = 'Saving Reorder Request...';
+
+        const payload = {
+          product_id: parseInt(rProdIn.value, 10),
+          packaging_type: document.getElementById('reorderPkgType')?.value || 'Bag',
+          package_size: parseFloat(document.getElementById('reorderPkgSize')?.value) || 0,
+          package_count: count,
+          reorder_date: rDateIn.value,
+          expected_delivery_date: document.getElementById('reorderExpectedDelivery')?.value || null,
+          supplier_name: document.getElementById('reorderSupplier')?.value || null,
+          unit_price: parseFloat(document.getElementById('reorderUnitPrice')?.value) || null,
+          notes: document.getElementById('reorderNotes')?.value || null,
+        };
+
+        try {
+          const res = await fetch('/api/reorders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (res.ok && data.success !== false) {
+            this.showToast(data.message || 'Reorder request created successfully (Status: Pending)!');
+            this.closeModal('modalReorder');
+            await this.loadMetadata();
+            if (this.views[this.state.currentView]?.refresh) {
+              this.views[this.state.currentView].refresh();
+            }
+          } else {
+            this.showToast(data.message || data.error || 'Failed to create reorder.', 'error');
+          }
+        } catch (err) {
+          this.showToast('Error saving reorder: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Save Reorder Request';
+        }
+      });
+    }
+
+    // Form Receive Reorder Submit
+    const fReceive = document.getElementById('formReceiveReorder');
+    if (fReceive) {
+      fReceive.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const reorderId = document.getElementById('receiveReorderId')?.value;
+        const qtyIn = document.getElementById('receiveReorderQty');
+        const qty = parseFloat(qtyIn?.value) || 0;
+        if (!reorderId) {
+          this.showToast('Missing reorder ID.', 'error');
+          return;
+        }
+        if (qty <= 0) {
+          this.showToast('Please enter a received quantity greater than 0.', 'error');
+          qtyIn?.focus();
+          return;
+        }
+
+        const btn = document.getElementById('btnConfirmReceive');
+        btn.disabled = true;
+        btn.textContent = 'Updating Inventory Stock...';
+
+        try {
+          const res = await fetch(`/api/reorders/${reorderId}/receive`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ received_quantity: qty }),
+          });
+          const data = await res.json();
+          if (res.ok && data.success !== false) {
+            this.showToast(data.message || `Reorder #${reorderId} received and stock updated!`);
+            this.closeModal('modalReceiveReorder');
+            await this.loadMetadata();
+            if (this.views[this.state.currentView]?.refresh) {
+              this.views[this.state.currentView].refresh();
+            }
+          } else {
+            this.showToast(data.message || data.error || 'Failed to receive reorder.', 'error');
+          }
+        } catch (err) {
+          this.showToast('Error receiving reorder: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Confirm & Update Stock';
+        }
+      });
+    }
+
+    // Dedicated Add Stock Submit (Step 2)
+    const fAddStock = document.getElementById('formAddStock');
+    if (fAddStock) {
+      fAddStock.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const prodIn = document.getElementById('addStockProduct');
+        const dateIn = document.getElementById('addStockDate');
+        const countIn = document.getElementById('addStockCount');
+
+        if (!prodIn || !prodIn.value) {
+          this.showToast('Please select a product.', 'error');
+          return;
+        }
+        if (!dateIn || !dateIn.value.trim()) {
+          this.showToast('Date is compulsory! Please select the date.', 'error');
+          dateIn?.focus();
+          return;
+        }
+        const count = parseFloat(countIn?.value) || 0;
+        if (count <= 0) {
+          this.showToast('Please enter a quantity greater than zero.', 'error');
+          countIn?.focus();
+          return;
+        }
+
+        const btn = document.getElementById('btnSubmitAddStock');
+        btn.disabled = true;
+        btn.textContent = 'Saving Stock to Database...';
+
+        const payload = {
+          product_id: parseInt(prodIn.value, 10),
+          packaging_type: document.getElementById('addStockPkgType')?.value || 'Bag',
+          package_size: parseFloat(document.getElementById('addStockPkgSize')?.value) || 0,
+          package_count: count,
+          adjustment_date: dateIn.value,
+          reason: document.getElementById('addStockReason')?.value || 'Physical Count Surplus',
+          remarks: document.getElementById('addStockRemarks')?.value || '',
+        };
+
+        try {
+          const res = await fetch('/api/stock/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (res.ok && data.success !== false) {
+            this.showToast(data.message || 'Stock successfully added and verified in database!');
+            this.closeModal('modalAddStock');
+            await this.loadMetadata();
+            if (this.views[this.state.currentView]?.refresh) {
+              this.views[this.state.currentView].refresh();
+            }
+          } else {
+            this.showToast(data.message || data.error || 'Failed to add stock.', 'error');
+          }
+        } catch (err) {
+          this.showToast('Error adding stock: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Add Stock Permanently';
+        }
+      });
+    }
+
+    // Dedicated Edit Stock Submit (Step 2)
+    const fEditStock = document.getElementById('formEditStock');
+    if (fEditStock) {
+      fEditStock.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const prodIn = document.getElementById('editStockProduct');
+        const dateIn = document.getElementById('editStockDate');
+        const targetIn = document.getElementById('editStockTargetQty');
+
+        if (!prodIn || !prodIn.value) {
+          this.showToast('Please select a product.', 'error');
+          return;
+        }
+        if (!dateIn || !dateIn.value.trim()) {
+          this.showToast('Date is compulsory! Please select the date.', 'error');
+          dateIn?.focus();
+          return;
+        }
+        const targetQty = parseFloat(targetIn?.value);
+        if (isNaN(targetQty) || targetQty < 0) {
+          this.showToast('Please enter a valid stock quantity (0 or greater).', 'error');
+          targetIn?.focus();
+          return;
+        }
+
+        const btn = document.getElementById('btnSubmitEditStock');
+        btn.disabled = true;
+        btn.textContent = 'Updating Stock in Database...';
+
+        const payload = {
+          product_id: parseInt(prodIn.value, 10),
+          target_quantity: targetQty,
+          adjustment_date: dateIn.value,
+          reason: document.getElementById('editStockReason')?.value || 'Physical Audit Reconciliation',
+          remarks: document.getElementById('editStockRemarks')?.value || '',
+        };
+
+        try {
+          const res = await fetch('/api/stock/edit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (res.ok && data.success !== false) {
+            this.showToast(data.message || 'Stock record corrected successfully!');
+            this.closeModal('modalEditStock');
+            await this.loadMetadata();
+            if (this.views[this.state.currentView]?.refresh) {
+              this.views[this.state.currentView].refresh();
+            }
+          } else {
+            this.showToast(data.message || data.error || 'Failed to edit stock.', 'error');
+          }
+        } catch (err) {
+          this.showToast('Error editing stock: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Save Stock Correction';
+        }
+      });
+    }
     document.getElementById('btnCopyDigest')?.addEventListener('click', () => {
       const content = document.getElementById('digestContent')?.textContent || '';
       if (!content) return;
@@ -1208,6 +1572,35 @@ const App = {
       }
       this.recalcAdjustTotal();
     });
+
+    // 4. Reorder packaging setup
+    const rProd = document.getElementById('reorderProduct');
+    const rPkgType = document.getElementById('reorderPkgType');
+    const rPkgSize = document.getElementById('reorderPkgSize');
+    const rPkgCount = document.getElementById('reorderPkgCount');
+
+    rProd?.addEventListener('change', () => this.syncReorderPackagingUI());
+    rPkgType?.addEventListener('change', () => this.syncReorderPackagingSizes());
+    rPkgSize?.addEventListener('change', () => this.recalcReorderTotal());
+    rPkgCount?.addEventListener('input', () => this.recalcReorderTotal());
+
+    // 5. Add Stock packaging setup
+    const asProd = document.getElementById('addStockProduct');
+    const asPkgType = document.getElementById('addStockPkgType');
+    const asPkgSize = document.getElementById('addStockPkgSize');
+    const asCount = document.getElementById('addStockCount');
+
+    asProd?.addEventListener('change', () => this.syncAddStockPackagingUI());
+    asPkgType?.addEventListener('change', () => this.syncAddStockPackagingSizes());
+    asPkgSize?.addEventListener('change', () => this.recalcAddStockTotal());
+    asCount?.addEventListener('input', () => this.recalcAddStockTotal());
+
+    // 6. Edit Stock setup
+    const esProd = document.getElementById('editStockProduct');
+    const esTarget = document.getElementById('editStockTargetQty');
+
+    esProd?.addEventListener('change', () => this.syncEditStockUI());
+    esTarget?.addEventListener('input', () => this.recalcEditStockDiff());
 
     this.initVoiceTyping();
 
@@ -1792,6 +2185,467 @@ const App = {
     }
     this.syncAdjustPackagingUI();
     this.openModal('modalAdjustment');
+  },
+
+  // ── Reorder Stock UI Sync & Calculations (Step 4) ──────────────────────────
+  syncReorderPackagingUI(forceDefault = false) {
+    const rProd = document.getElementById('reorderProduct');
+    const rPkgType = document.getElementById('reorderPkgType');
+    const rStockHint = document.getElementById('reorderCurrentStockHint');
+    const rStockVal = document.getElementById('reorderCurrentStockVal');
+
+    if (!rProd || !rPkgType) return;
+    const prodId = rProd.value;
+    const prod = this.state.products.find(p => p.id == prodId);
+
+    if (rStockHint && rStockVal) {
+      if (prod) {
+        rStockVal.textContent = `${prod.current_quantity} ${prod.unit || ''}`;
+        rStockHint.style.display = 'block';
+      } else {
+        rStockHint.style.display = 'none';
+      }
+    }
+
+    if (!prod) return;
+
+    const baseUnit = (prod.unit || 'kg').toLowerCase();
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || baseUnit === 'liter' || (prod.name || '').toLowerCase().includes('liquid'));
+
+    const prevType = rPkgType.value;
+    if (isLiquid) {
+      rPkgType.innerHTML = `
+        <option value="Bottle">Bottle (Liter / L / ml)</option>
+        <option value="Container">Can / Container (Liter / L)</option>
+        <option value="Drum">Drum / Barrel (Liter / L)</option>
+        <option value="Pouch">Pouch / Packet (L / ml)</option>
+        <option value="Loose">Loose / Direct Liters (L)</option>
+      `;
+    } else {
+      rPkgType.innerHTML = `
+        <option value="Bag">Bag (KG Packages)</option>
+        <option value="Pouch">Pouch / Packet (KG / g)</option>
+        <option value="Container">Box / Container (KG)</option>
+        <option value="Drum">Drum (KG)</option>
+        <option value="Loose">Loose / Direct Kilograms (KG)</option>
+      `;
+    }
+
+    if (forceDefault || document.activeElement === rProd || !prevType) {
+      rPkgType.value = prod.default_packaging_type || (isLiquid ? 'Bottle' : 'Bag');
+    } else {
+      const hasPrev = Array.from(rPkgType.options).some(o => o.value.toLowerCase() === prevType.toLowerCase());
+      rPkgType.value = hasPrev ? prevType : (isLiquid ? 'Bottle' : 'Bag');
+    }
+
+    this.syncReorderPackagingSizes();
+  },
+
+  syncReorderPackagingSizes() {
+    const rProd = document.getElementById('reorderProduct');
+    const rPkgType = document.getElementById('reorderPkgType');
+    const rPkgSize = document.getElementById('reorderPkgSize');
+    const rPkgSizeGroup = document.getElementById('reorderPkgSizeGroup');
+    const rCountLabel = document.getElementById('reorderPkgCountLabel');
+
+    if (!rProd || !rPkgType || !rPkgSize) return;
+
+    const prod = this.state.products.find(p => p.id == rProd.value);
+    const baseUnit = (prod && prod.unit) ? prod.unit.toLowerCase() : 'kg';
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || (prod && prod.name.toLowerCase().includes('liquid')));
+    const selType = rPkgType.value || (isLiquid ? 'Bottle' : 'Bag');
+
+    if (selType.toLowerCase() === 'loose') {
+      if (rPkgSizeGroup) rPkgSizeGroup.style.display = 'none';
+      const uLabel = isLiquid ? 'Liters (L)' : 'Kilograms (KG)';
+      if (rCountLabel) rCountLabel.textContent = `4. Reorder Quantity (${uLabel} Direct) *`;
+    } else {
+      if (rPkgSizeGroup) rPkgSizeGroup.style.display = 'block';
+      const noun = isLiquid ? (selType === 'Bottle' ? 'Bottles' : `${selType}s`) : (selType === 'Bag' ? 'Bags' : `${selType}s`);
+      if (rCountLabel) rCountLabel.textContent = `4. Reorder Quantity (Number of ${noun}) *`;
+
+      let matching = (this.state.packages || []).filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
+      if (isLiquid) {
+        const liquidMatches = matching.filter(p => ['l', 'ml', 'litre', 'liter'].includes(p.unit_symbol.toLowerCase()));
+        if (liquidMatches.length) matching = liquidMatches;
+      } else {
+        const weightMatches = matching.filter(p => ['kg', 'g', 'gm', 'ton'].includes(p.unit_symbol.toLowerCase()));
+        if (weightMatches.length) matching = weightMatches;
+      }
+
+      if (!matching.length) {
+        matching = isLiquid
+          ? [
+              { package_size: 10, unit_symbol: 'ml', base_multiplier: 0.01, label: `10 ml ${selType}` },
+              { package_size: 25, unit_symbol: 'ml', base_multiplier: 0.025, label: `25 ml ${selType}` },
+              { package_size: 50, unit_symbol: 'ml', base_multiplier: 0.05, label: `50 ml ${selType}` },
+              { package_size: 100, unit_symbol: 'ml', base_multiplier: 0.1, label: `100 ml ${selType}` },
+              { package_size: 250, unit_symbol: 'ml', base_multiplier: 0.25, label: `250 ml ${selType}` },
+              { package_size: 500, unit_symbol: 'ml', base_multiplier: 0.5, label: `500 ml ${selType}` },
+              { package_size: 1, unit_symbol: 'L', base_multiplier: 1, label: `1 L ${selType}` },
+              { package_size: 2, unit_symbol: 'L', base_multiplier: 2, label: `2 L ${selType}` },
+              { package_size: 5, unit_symbol: 'L', base_multiplier: 5, label: `5 L ${selType}` },
+            ]
+          : [
+              { package_size: 50, unit_symbol: 'g', base_multiplier: 0.05, label: `50 g ${selType}` },
+              { package_size: 100, unit_symbol: 'g', base_multiplier: 0.1, label: `100 g ${selType}` },
+              { package_size: 200, unit_symbol: 'g', base_multiplier: 0.2, label: `200 g ${selType}` },
+              { package_size: 250, unit_symbol: 'g', base_multiplier: 0.25, label: `250 g ${selType}` },
+              { package_size: 500, unit_symbol: 'g', base_multiplier: 0.5, label: `500 g ${selType}` },
+              { package_size: 1, unit_symbol: 'kg', base_multiplier: 1, label: `1 kg ${selType}` },
+              { package_size: 2, unit_symbol: 'kg', base_multiplier: 2, label: `2 kg ${selType}` },
+              { package_size: 5, unit_symbol: 'kg', base_multiplier: 5, label: `5 kg ${selType}` },
+              { package_size: 10, unit_symbol: 'kg', base_multiplier: 10, label: `10 kg ${selType}` },
+              { package_size: 25, unit_symbol: 'kg', base_multiplier: 25, label: `25 kg ${selType}` },
+              { package_size: 50, unit_symbol: 'kg', base_multiplier: 50, label: `50 kg ${selType}` },
+            ];
+      }
+
+      rPkgSize.innerHTML = matching.map(p =>
+        `<option value="${p.package_size}" data-unit="${p.unit_symbol}" data-multiplier="${p.base_multiplier}">${p.label || `${p.package_size} ${p.unit_symbol} ${selType}`}</option>`
+      ).join('');
+
+      if (prod && prod.default_package_size) {
+        const found = matching.find(p => Math.abs(p.package_size - prod.default_package_size) < 0.001);
+        if (found) rPkgSize.value = found.package_size;
+      }
+    }
+
+    this.recalcReorderTotal();
+  },
+
+  recalcReorderTotal() {
+    const rProd = document.getElementById('reorderProduct');
+    const rPkgType = document.getElementById('reorderPkgType');
+    const rPkgSize = document.getElementById('reorderPkgSize');
+    const rPkgCount = document.getElementById('reorderPkgCount');
+    const rCalcResult = document.getElementById('reorderCalcResult');
+
+    if (!rProd || !rPkgType || !rPkgCount || !rCalcResult) return;
+
+    const prod = this.state.products.find(p => p.id == rProd.value);
+    const baseSym = (prod && prod.unit) ? prod.unit : 'kg';
+    const pkgType = rPkgType.value || 'Bag';
+    const count = parseFloat(rPkgCount.value) || 0;
+
+    if (pkgType.toLowerCase() === 'loose') {
+      rCalcResult.innerHTML = `<strong>${count} ${baseSym} Loose</strong>`;
+    } else {
+      const opt = rPkgSize.options[rPkgSize.selectedIndex];
+      if (opt && opt.value) {
+        const size = parseFloat(opt.value) || 0;
+        const unit = opt.dataset.unit || baseSym;
+        const mult = parseFloat(opt.dataset.multiplier) || size;
+        const total = Math.round(count * mult * 10000) / 10000;
+        const noun = count === 1 ? pkgType : (pkgType.endsWith('s') ? pkgType : pkgType + 's');
+        rCalcResult.innerHTML = `<strong>${count} × ${size} ${unit} ${noun} = ${total} ${baseSym}</strong>`;
+      } else {
+        rCalcResult.innerHTML = `<strong>0 ${baseSym}</strong>`;
+      }
+    }
+  },
+
+  openReorderModal(productId = null) {
+    const form = document.getElementById('formReorder');
+    if (form) form.reset();
+
+    const dIn = document.getElementById('reorderDate');
+    if (dIn) dIn.value = new Date().toISOString().split('T')[0];
+
+    const countIn = document.getElementById('reorderPkgCount');
+    if (countIn) countIn.value = '1';
+
+    const prodSel = document.getElementById('reorderProduct');
+    if (prodSel && productId) {
+      prodSel.value = productId;
+    }
+    this.syncReorderPackagingUI(true);
+    this.openModal('modalReorder');
+  },
+
+  openReceiveReorderModal(reorder) {
+    if (!reorder) return;
+    const form = document.getElementById('formReceiveReorder');
+    if (form) form.reset();
+
+    const idIn = document.getElementById('receiveReorderId');
+    if (idIn) idIn.value = reorder.id;
+
+    const prodName = document.getElementById('receiveProdName');
+    if (prodName) prodName.textContent = reorder.product_name || `Product #${reorder.product_id}`;
+
+    const summaryText = document.getElementById('receiveSummaryText');
+    if (summaryText) summaryText.textContent = `${reorder.quantity} (${reorder.package_summary || reorder.packaging_type || ''})`;
+
+    const suppName = document.getElementById('receiveSupplierName');
+    if (suppName) suppName.textContent = reorder.supplier_name || 'N/A';
+
+    const remaining = reorder.remaining_quantity != null ? reorder.remaining_quantity : (reorder.quantity - (reorder.received_quantity || 0));
+    const qtyIn = document.getElementById('receiveReorderQty');
+    if (qtyIn) qtyIn.value = Math.max(0, remaining);
+
+    const hint = document.getElementById('receiveRemainingHint');
+    if (hint) hint.textContent = `Total pending to receive: ${remaining}`;
+
+    this.openModal('modalReceiveReorder');
+  },
+
+  // ── Dedicated Add Stock UI Sync & Helpers (Step 2) ────────────────────────
+  syncAddStockPackagingUI(forceDefault = false) {
+    const aProd = document.getElementById('addStockProduct');
+    const aPkgType = document.getElementById('addStockPkgType');
+    const aStockHint = document.getElementById('addStockCurrentHint');
+    const aStockVal = document.getElementById('addStockCurrentVal');
+
+    if (!aProd || !aPkgType) return;
+    const prodId = aProd.value;
+    const prod = this.state.products.find(p => p.id == prodId);
+
+    if (aStockHint && aStockVal) {
+      if (prod) {
+        aStockVal.textContent = `${prod.current_quantity} ${prod.unit || ''}`;
+        aStockHint.style.display = 'block';
+      } else {
+        aStockHint.style.display = 'none';
+      }
+    }
+
+    if (!prod) return;
+
+    const baseUnit = (prod.unit || 'kg').toLowerCase();
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || baseUnit === 'liter' || (prod.name || '').toLowerCase().includes('liquid'));
+
+    const prevType = aPkgType.value;
+    if (isLiquid) {
+      aPkgType.innerHTML = `
+        <option value="Bottle">Bottle (Liter / L / ml)</option>
+        <option value="Container">Can / Container (Liter / L)</option>
+        <option value="Drum">Drum / Barrel (Liter / L)</option>
+        <option value="Pouch">Pouch / Packet (L / ml)</option>
+        <option value="Loose">Loose / Direct Liters (L)</option>
+      `;
+    } else {
+      aPkgType.innerHTML = `
+        <option value="Bag">Bag (KG Packages)</option>
+        <option value="Pouch">Pouch / Packet (KG / g)</option>
+        <option value="Container">Box / Container (KG)</option>
+        <option value="Drum">Drum (KG)</option>
+        <option value="Loose">Loose / Direct Kilograms (KG)</option>
+      `;
+    }
+
+    if (forceDefault || document.activeElement === aProd || !prevType) {
+      aPkgType.value = prod.default_packaging_type || (isLiquid ? 'Bottle' : 'Bag');
+    } else {
+      const hasPrev = Array.from(aPkgType.options).some(o => o.value.toLowerCase() === prevType.toLowerCase());
+      aPkgType.value = hasPrev ? prevType : (isLiquid ? 'Bottle' : 'Bag');
+    }
+
+    this.syncAddStockPackagingSizes();
+  },
+
+  syncAddStockPackagingSizes() {
+    const aProd = document.getElementById('addStockProduct');
+    const aPkgType = document.getElementById('addStockPkgType');
+    const aPkgSize = document.getElementById('addStockPkgSize');
+    const aPkgSizeGroup = document.getElementById('addStockPkgSizeGroup');
+    const aCountLabel = document.getElementById('addStockCountLabel');
+
+    if (!aProd || !aPkgType || !aPkgSize) return;
+
+    const prod = this.state.products.find(p => p.id == aProd.value);
+    const baseUnit = (prod && prod.unit) ? prod.unit.toLowerCase() : 'kg';
+    const isLiquid = (baseUnit === 'l' || baseUnit === 'ml' || (prod && prod.name.toLowerCase().includes('liquid')));
+    const selType = aPkgType.value || (isLiquid ? 'Bottle' : 'Bag');
+
+    if (selType.toLowerCase() === 'loose') {
+      if (aPkgSizeGroup) aPkgSizeGroup.style.display = 'none';
+      const uLabel = isLiquid ? 'Liters (L)' : 'Kilograms (KG)';
+      if (aCountLabel) aCountLabel.textContent = `Quantity to Add (${uLabel} Direct) *`;
+    } else {
+      if (aPkgSizeGroup) aPkgSizeGroup.style.display = 'block';
+      const noun = isLiquid ? (selType === 'Bottle' ? 'Bottles' : `${selType}s`) : (selType === 'Bag' ? 'Bags' : `${selType}s`);
+      if (aCountLabel) aCountLabel.textContent = `Quantity to Add (Number of ${noun}) *`;
+
+      let matching = (this.state.packages || []).filter(p => p.packaging_type.toLowerCase() === selType.toLowerCase());
+      if (isLiquid) {
+        const liquidMatches = matching.filter(p => ['l', 'ml', 'litre', 'liter'].includes(p.unit_symbol.toLowerCase()));
+        if (liquidMatches.length) matching = liquidMatches;
+      } else {
+        const weightMatches = matching.filter(p => ['kg', 'g', 'gm', 'ton'].includes(p.unit_symbol.toLowerCase()));
+        if (weightMatches.length) matching = weightMatches;
+      }
+
+      if (!matching.length) {
+        matching = isLiquid
+          ? [
+              { package_size: 10, unit_symbol: 'ml', base_multiplier: 0.01, label: `10 ml ${selType}` },
+              { package_size: 25, unit_symbol: 'ml', base_multiplier: 0.025, label: `25 ml ${selType}` },
+              { package_size: 50, unit_symbol: 'ml', base_multiplier: 0.05, label: `50 ml ${selType}` },
+              { package_size: 100, unit_symbol: 'ml', base_multiplier: 0.1, label: `100 ml ${selType}` },
+              { package_size: 250, unit_symbol: 'ml', base_multiplier: 0.25, label: `250 ml ${selType}` },
+              { package_size: 500, unit_symbol: 'ml', base_multiplier: 0.5, label: `500 ml ${selType}` },
+              { package_size: 1, unit_symbol: 'L', base_multiplier: 1, label: `1 L ${selType}` },
+              { package_size: 2, unit_symbol: 'L', base_multiplier: 2, label: `2 L ${selType}` },
+              { package_size: 5, unit_symbol: 'L', base_multiplier: 5, label: `5 L ${selType}` },
+            ]
+          : [
+              { package_size: 50, unit_symbol: 'g', base_multiplier: 0.05, label: `50 g ${selType}` },
+              { package_size: 100, unit_symbol: 'g', base_multiplier: 0.1, label: `100 g ${selType}` },
+              { package_size: 200, unit_symbol: 'g', base_multiplier: 0.2, label: `200 g ${selType}` },
+              { package_size: 250, unit_symbol: 'g', base_multiplier: 0.25, label: `250 g ${selType}` },
+              { package_size: 500, unit_symbol: 'g', base_multiplier: 0.5, label: `500 g ${selType}` },
+              { package_size: 1, unit_symbol: 'kg', base_multiplier: 1, label: `1 kg ${selType}` },
+              { package_size: 2, unit_symbol: 'kg', base_multiplier: 2, label: `2 kg ${selType}` },
+              { package_size: 5, unit_symbol: 'kg', base_multiplier: 5, label: `5 kg ${selType}` },
+              { package_size: 10, unit_symbol: 'kg', base_multiplier: 10, label: `10 kg ${selType}` },
+              { package_size: 25, unit_symbol: 'kg', base_multiplier: 25, label: `25 kg ${selType}` },
+              { package_size: 50, unit_symbol: 'kg', base_multiplier: 50, label: `50 kg ${selType}` },
+            ];
+      }
+
+      aPkgSize.innerHTML = matching.map(p =>
+        `<option value="${p.package_size}" data-unit="${p.unit_symbol}" data-multiplier="${p.base_multiplier}">${p.label || `${p.package_size} ${p.unit_symbol} ${selType}`}</option>`
+      ).join('');
+
+      if (prod && prod.default_package_size) {
+        const found = matching.find(p => Math.abs(p.package_size - prod.default_package_size) < 0.001);
+        if (found) aPkgSize.value = found.package_size;
+      }
+    }
+
+    this.recalcAddStockTotal();
+  },
+
+  recalcAddStockTotal() {
+    const aProd = document.getElementById('addStockProduct');
+    const aPkgType = document.getElementById('addStockPkgType');
+    const aPkgSize = document.getElementById('addStockPkgSize');
+    const aCount = document.getElementById('addStockCount');
+    const aCalcResult = document.getElementById('addStockCalcResult');
+
+    if (!aProd || !aPkgType || !aCount || !aCalcResult) return;
+
+    const prod = this.state.products.find(p => p.id == aProd.value);
+    const baseSym = (prod && prod.unit) ? prod.unit : 'kg';
+    const pkgType = aPkgType.value || 'Bag';
+    const count = parseFloat(aCount.value) || 0;
+    const currentStock = prod ? (prod.current_quantity || 0) : 0;
+
+    let addedQty = 0;
+    if (pkgType.toLowerCase() === 'loose') {
+      addedQty = count;
+    } else {
+      const opt = aPkgSize.options[aPkgSize.selectedIndex];
+      if (opt && opt.value) {
+        const mult = parseFloat(opt.dataset.multiplier) || parseFloat(opt.value) || 0;
+        addedQty = Math.round(count * mult * 10000) / 10000;
+      }
+    }
+
+    const newTotal = Math.round((currentStock + addedQty) * 10000) / 10000;
+    aCalcResult.innerHTML = `<strong>+${addedQty} ${baseSym} (New Balance: ${newTotal} ${baseSym})</strong>`;
+  },
+
+  openAddStockModal(productId = null) {
+    const form = document.getElementById('formAddStock');
+    if (form) form.reset();
+
+    const dIn = document.getElementById('addStockDate');
+    if (dIn) dIn.value = new Date().toISOString().split('T')[0];
+
+    const countIn = document.getElementById('addStockCount');
+    if (countIn) countIn.value = '1';
+
+    const prodSel = document.getElementById('addStockProduct');
+    if (prodSel && productId) {
+      prodSel.value = productId;
+    }
+    this.syncAddStockPackagingUI(true);
+    this.openModal('modalAddStock');
+  },
+
+  // ── Dedicated Edit Stock UI Sync & Helpers (Step 2) ───────────────────────
+  syncEditStockUI() {
+    const eProd = document.getElementById('editStockProduct');
+    const eHint = document.getElementById('editStockCurrentHint');
+    const eVal = document.getElementById('editStockCurrentVal');
+    const eTarget = document.getElementById('editStockTargetQty');
+
+    if (!eProd) return;
+    const prodId = eProd.value;
+    const prod = this.state.products.find(p => p.id == prodId);
+
+    if (prod) {
+      if (eVal) eVal.textContent = `${prod.current_quantity} ${prod.unit || ''}`;
+      if (eHint) eHint.style.display = 'block';
+      if (eTarget && (document.activeElement === eProd || !eTarget.value)) {
+        eTarget.value = prod.current_quantity;
+      }
+    } else {
+      if (eHint) eHint.style.display = 'none';
+    }
+
+    this.recalcEditStockDiff();
+  },
+
+  recalcEditStockDiff() {
+    const eProd = document.getElementById('editStockProduct');
+    const eTarget = document.getElementById('editStockTargetQty');
+    const eDiffVal = document.getElementById('editStockDiffVal');
+    const eDiffBadge = document.getElementById('editStockDiffBadge');
+
+    if (!eProd || !eTarget || !eDiffVal) return;
+
+    const prod = this.state.products.find(p => p.id == eProd.value);
+    const baseSym = (prod && prod.unit) ? prod.unit : 'kg';
+    const currentStock = prod ? (prod.current_quantity || 0) : 0;
+    const targetStock = parseFloat(eTarget.value);
+
+    if (isNaN(targetStock)) {
+      eDiffVal.textContent = '0';
+      if (eDiffBadge) {
+        eDiffBadge.textContent = 'Adjustment';
+        eDiffBadge.style.background = 'var(--text-mid)';
+      }
+      return;
+    }
+
+    const diff = Math.round((targetStock - currentStock) * 10000) / 10000;
+    if (diff > 0) {
+      eDiffVal.textContent = `+${diff} ${baseSym} (Stock Increase)`;
+      if (eDiffBadge) {
+        eDiffBadge.textContent = 'Addition';
+        eDiffBadge.style.background = 'var(--green-mid)';
+      }
+    } else if (diff < 0) {
+      eDiffVal.textContent = `${diff} ${baseSym} (Stock Deduction)`;
+      if (eDiffBadge) {
+        eDiffBadge.textContent = 'Deduction';
+        eDiffBadge.style.background = 'var(--red)';
+      }
+    } else {
+      eDiffVal.textContent = `0 ${baseSym} (No Change)`;
+      if (eDiffBadge) {
+        eDiffBadge.textContent = 'Identical';
+        eDiffBadge.style.background = 'var(--text-mid)';
+      }
+    }
+  },
+
+  openEditStockModal(productId = null) {
+    const form = document.getElementById('formEditStock');
+    if (form) form.reset();
+
+    const dIn = document.getElementById('editStockDate');
+    if (dIn) dIn.value = new Date().toISOString().split('T')[0];
+
+    const prodSel = document.getElementById('editStockProduct');
+    if (prodSel && productId) {
+      prodSel.value = productId;
+    }
+    this.syncEditStockUI();
+    this.openModal('modalEditStock');
   },
 
   // ── Daily Farm Digest ─────────────────────────────────────────────────────

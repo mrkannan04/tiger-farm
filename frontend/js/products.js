@@ -126,6 +126,7 @@ const ProductsView = {
           <thead>
             <tr>
               <th>Product Name</th>
+              <th>Product Date</th>
               <th>Category</th>
               <th>Status</th>
               <th>Bag Size / Default Qty</th>
@@ -201,6 +202,11 @@ const ProductsView = {
                     ${p.description ? `<div style="font-size:0.75rem; color:var(--muted);">${p.description}</div>` : ''}
                   </td>
                   <td>
+                    <span style="font-size:0.82rem; font-weight:600; color:var(--green-dark);">
+                      📅 ${p.product_date || p.created_at || 'N/A'}
+                    </span>
+                  </td>
+                  <td>
                     <span class="badge" style="background:${catColor}20; color:${catColor}; border:1px solid ${catColor}50;">
                       ${p.category || 'Uncategorized'}
                     </span>
@@ -221,8 +227,10 @@ const ProductsView = {
                     ${breakdownHtml}
                   </td>
                   <td style="text-align:right; white-space:nowrap;">
-                    <button class="btn btn-ghost btn-sm btn-view-product" data-id="${p.id}" title="History & Audit">🔍 Details</button>
-                    <button class="btn btn-ghost btn-sm btn-edit-product" data-id="${p.id}" title="Edit product">✏️</button>
+                    <button class="btn btn-primary btn-sm btn-row-add-stock" data-id="${p.id}" data-name="${p.name}" title="Add Stock" style="padding:0.25rem 0.55rem; font-size:0.78rem;">+ Stock</button>
+                    <button class="btn btn-secondary btn-sm btn-row-edit-stock" data-id="${p.id}" data-name="${p.name}" title="Edit / Correct Stock" style="padding:0.25rem 0.55rem; font-size:0.78rem;">✏️ Edit</button>
+                    <button class="btn btn-ghost btn-sm btn-row-reorder" data-id="${p.id}" data-name="${p.name}" title="Reorder from vendor" style="padding:0.25rem 0.55rem; font-size:0.78rem;">🔄 Reorder</button>
+                    <button class="btn btn-ghost btn-sm btn-view-product" data-id="${p.id}" title="History & Audit">🔍</button>
                     <button class="btn btn-danger btn-sm btn-delete-product" data-id="${p.id}" data-name="${p.name}" title="Archive">🗑️</button>
                   </td>
                 </tr>
@@ -344,6 +352,9 @@ const ProductsView = {
       if (document.getElementById('productLooseQuantity')) document.getElementById('productLooseQuantity').value = '0';
       if (document.getElementById('productMinStock')) document.getElementById('productMinStock').value = '5';
       if (document.getElementById('productStatusSelect')) document.getElementById('productStatusSelect').value = 'true';
+      if (document.getElementById('productDate')) {
+        document.getElementById('productDate').value = new Date().toISOString().split('T')[0];
+      }
 
       try {
         if (typeof this.updateOpeningStockCalc === 'function') {
@@ -353,6 +364,28 @@ const ProductsView = {
         }
       } catch (_) {}
       App.openModal('modalProduct');
+    });
+
+    // Quick Select Buttons for Mandatory Product Date
+    document.getElementById('btnProductDateToday')?.addEventListener('click', () => {
+      const d = document.getElementById('productDate');
+      if (d) d.value = new Date().toISOString().split('T')[0];
+    });
+    document.getElementById('btnProductDateYesterday')?.addEventListener('click', () => {
+      const d = document.getElementById('productDate');
+      if (d) {
+        const dt = new Date();
+        dt.setDate(dt.getDate() - 1);
+        d.value = dt.toISOString().split('T')[0];
+      }
+    });
+    document.getElementById('btnProductDatePrev')?.addEventListener('click', () => {
+      const d = document.getElementById('productDate');
+      if (d) {
+        const dt = new Date();
+        dt.setDate(dt.getDate() - 2);
+        d.value = dt.toISOString().split('T')[0];
+      }
     });
 
     // Export CSV
@@ -382,6 +415,15 @@ const ProductsView = {
         e.preventDefault();
         const editId = document.getElementById('productEditId').value;
         const btn = document.getElementById('btnSubmitProduct');
+
+        // Mandatory Product Date validation (Step 5)
+        const pDate = document.getElementById('productDate')?.value;
+        if (!pDate) {
+          App.showToast('Product Date is compulsory. Please select the date.', 'error');
+          document.getElementById('productDate')?.focus();
+          return;
+        }
+
         if (btn) {
           btn.disabled = true;
           btn.textContent = editId ? 'Saving Changes...' : 'Saving to Database...';
@@ -399,6 +441,7 @@ const ProductsView = {
           name: document.getElementById('productName').value.trim(),
           category_id: document.getElementById('productCategory').value,
           unit_id: document.getElementById('productUnit').value,
+          product_date: pDate,
           minimum_stock: document.getElementById('productMinStock').value,
           description: document.getElementById('productDesc').value.trim(),
           is_active: document.getElementById('productStatusSelect').value === 'true',
@@ -636,6 +679,9 @@ const ProductsView = {
           document.getElementById('productMinStock').value = p.minimum_stock;
           document.getElementById('productStatusSelect').value = p.is_active ? 'true' : 'false';
           document.getElementById('productDesc').value = p.description || '';
+          if (document.getElementById('productDate')) {
+            document.getElementById('productDate').value = p.product_date_iso || (p.created_at ? new Date(p.created_at).toISOString().split('T')[0] : '');
+          }
 
           // Match unit / package dropdown option
           const pkgSel = document.getElementById('productUnitPackage');
@@ -761,6 +807,26 @@ const ProductsView = {
         }
       });
     });
+    // Row Quick Action: Add Stock
+    container.querySelectorAll('.btn-row-add-stock').forEach(btn => {
+      btn.addEventListener('click', () => {
+        App.openAddStockModal(btn.dataset.id);
+      });
+    });
+
+    // Row Quick Action: Edit / Correct Stock
+    container.querySelectorAll('.btn-row-edit-stock').forEach(btn => {
+      btn.addEventListener('click', () => {
+        App.openEditStockModal(btn.dataset.id);
+      });
+    });
+
+    // Row Quick Action: Reorder from vendor
+    container.querySelectorAll('.btn-row-reorder').forEach(btn => {
+      btn.addEventListener('click', () => {
+        App.openReorderModal(btn.dataset.id);
+      });
+    });
   },
 
   // SECTION 21: Full Product Details with Purchase History, Usage History, Ledger, and Package Breakdown
@@ -785,6 +851,16 @@ const ProductsView = {
       statusBadge.textContent = p.status === 'out_of_stock' ? 'Out of Stock' : p.status === 'low_stock' ? 'Low Stock' : 'In Stock';
 
       body.innerHTML = `
+        <!-- Product Date Banner (Step 5) -->
+        <div style="background:rgba(45,106,79,0.06); border:1px solid rgba(45,106,79,0.25); border-radius:var(--radius); padding:0.6rem 0.9rem; margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; font-size:0.85rem;">
+          <div>
+            📅 <strong>Product Date:</strong> <span style="color:var(--green-dark); font-weight:700;">${p.product_date || p.created_at || 'N/A'}</span>
+          </div>
+          <div style="color:var(--muted); font-size:0.78rem;">
+            System Record: ${p.created_at || ''}
+          </div>
+        </div>
+
         <!-- High Level Stats -->
         <div class="stats-grid" style="margin-bottom:1.25rem;">
           <div class="stat-item">

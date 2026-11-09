@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from flask import Blueprint, jsonify, session
 from sqlalchemy import func
-from ..models import db, Product, Purchase, Usage, Notification, ActivityLog
+from ..models import db, Product, Purchase, Usage, Notification, ActivityLog, Reorder, StockMovement
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -13,6 +13,7 @@ def _require_auth():
 
 
 @dashboard_bp.route('/api/dashboard', methods=['GET'])
+@dashboard_bp.route('/api/dashboard/stats', methods=['GET'])
 def dashboard():
     auth_err = _require_auth()
     if auth_err:
@@ -21,11 +22,25 @@ def dashboard():
     today = date.today()
     month_start = date(today.year, today.month, 1)
 
-    # Product counts directly from database queries (Section 22)
+    # Product and stock metrics directly from live database
     all_products = Product.query.filter_by(is_active=True).all()
     total_products = len(all_products)
+    total_stock_quantity = sum(p.current_quantity for p in all_products)
+    available_stock = sum(1 for p in all_products if p.current_quantity > 0)
     low_stock_count = sum(1 for p in all_products if p.status == 'low_stock')
     out_of_stock_count = sum(1 for p in all_products if p.status == 'out_of_stock')
+
+    # Pending purchase and reorder counts
+    pending_purchases_count = (
+        Purchase.query
+        .filter(Purchase.payment_status.in_(['Pending Credit', 'Partial']), Purchase.status != 'Cancelled')
+        .count()
+    )
+    pending_reorders_count = (
+        Reorder.query
+        .filter(Reorder.status.in_(['Pending', 'Ordered']))
+        .count()
+    )
 
     # Total estimated stock valuation directly from database
     total_stock_value = sum(p.estimated_stock_value for p in all_products)
@@ -96,18 +111,28 @@ def dashboard():
         all_products, monthly_purchase, monthly_usages, most_used
     )
 
-    # Recent activity
+    # Recent activity & Recent stock movements
     recent_activity = (
         ActivityLog.query
         .order_by(ActivityLog.created_at.desc())
         .limit(10).all()
     )
 
+    recent_stock_movements = (
+        StockMovement.query
+        .order_by(StockMovement.movement_date.desc(), StockMovement.id.desc())
+        .limit(10).all()
+    )
+
     return jsonify({
         'success': True,
         'total_products': total_products,
+        'total_stock_quantity': round(total_stock_quantity, 4),
+        'available_stock': available_stock,
         'low_stock_count': low_stock_count,
         'out_of_stock_count': out_of_stock_count,
+        'pending_purchases_count': pending_purchases_count,
+        'pending_reorders_count': pending_reorders_count,
         'total_stock_value': round(total_stock_value, 2),
         'total_pending_credit': round(float(total_pending_credit), 2),
         'expiring_count': expiring_count,
@@ -119,6 +144,7 @@ def dashboard():
         'low_stock_products': low_stock_products,
         'smart_summary': smart_summary,
         'recent_activity': [a.to_dict() for a in recent_activity],
+        'recent_stock_activities': [m.to_dict() for m in recent_stock_movements],
     })
 
 

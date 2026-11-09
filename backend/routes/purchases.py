@@ -1,7 +1,7 @@
 import os
 from flask import Blueprint, request, jsonify, session, current_app
 from ..models import db, Purchase, Product, ActivityLog, StockMovement
-from ..services.stock_service import record_purchase
+from ..services.stock_service import record_purchase, cancel_purchase_and_reverse_stock
 from ..utils.validators import validate_purchase, parse_date, allowed_file
 from werkzeug.utils import secure_filename
 from datetime import date
@@ -235,6 +235,114 @@ def update_purchase_payment(purchase_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Failed: {str(e)}'}), 500
+
+
+@purchases_bp.route('/api/purchases/<int:purchase_id>', methods=['PUT'])
+def update_purchase(purchase_id):
+    """
+    Edit existing purchase record:
+    - If quantity changes, atomically adjusts product stock with difference.
+    - Updates price, date, supplier, invoice, batch number, remarks, payment status.
+    - Records audit log.
+    """
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    purchase = Purchase.query.get_or_404(purchase_id)
+    if purchase.status == 'Cancelled':
+        return jsonify({'success': False, 'message': 'Cannot edit a cancelled purchase.'}), 400
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    product = Product.query.get(purchase.product_id)
+
+    try:
+        old_qty = purchase.quantity
+        if 'quantity' in data and data['quantity'] not in (None, ''):
+            new_qty = float(data['quantity'])
+            if new_qty <= 0:
+                return jsonify({'success': False, 'message': 'Purchase quantity must be greater than zero.'}), 400
+            diff = round(new_qty - old_qty, 4)
+            if abs(diff) > 0.0001 and product:
+                prev_stock = product.current_quantity or 0.0
+                product.current_quantity = max(0.0, round(prev_stock + diff, 4))
+                db.session.add(StockMovement(
+                    product_id=product.id,
+                    movement_type='ADJUSTMENT',
+                    quantity=diff,
+                    previous_quantity=prev_stock,
+                    balance_after=product.current_quantity,
+                    reference_id=purchase.id,
+                    user_id=session.get('user_id'),
+                    movement_date=date.today(),
+                    remarks=f"Purchase #{purchase.id} quantity edited: {old_qty:g} -> {new_qty:g}",
+                ))
+            purchase.quantity = new_qty
+
+        if 'unit_price' in data and data['unit_price'] not in (None, ''):
+            purchase.unit_price = float(data['unit_price'])
+        if 'total_price' in data and data['total_price'] not in (None, ''):
+            purchase.total_price = float(data['total_price'])
+        if 'purchase_date' in data and data['purchase_date']:
+            p_date = parse_date(data['purchase_date'])
+            if p_date:
+                purchase.purchase_date = p_date
+        if 'supplier_name' in data:
+            purchase.supplier_name = (data['supplier_name'] or '').strip() or None
+        if 'invoice_number' in data:
+            purchase.invoice_number = (data['invoice_number'] or '').strip() or None
+        if 'batch_number' in data:
+            purchase.batch_number = (data['batch_number'] or '').strip() or None
+        if 'remarks' in data:
+            purchase.remarks = (data['remarks'] or '').strip() or None
+        if 'payment_status' in data and data['payment_status']:
+            purchase.payment_status = data['payment_status']
+        if 'payment_due_date' in data:
+            purchase.payment_due_date = parse_date(data['payment_due_date']) if data['payment_due_date'] else None
+        if 'expiry_date' in data:
+            purchase.expiry_date = parse_date(data['expiry_date']) if data['expiry_date'] else None
+
+        db.session.add(ActivityLog(
+            user_id=session.get('user_id'),
+            action=f"Updated details for Purchase #{purchase.id} ({purchase.product.name if purchase.product else ''}).",
+            entity_type='purchase',
+            entity_id=purchase.id,
+        ))
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f"Purchase #{purchase.id} updated successfully.",
+            'purchase': purchase.to_dict(),
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Failed to update purchase: {str(e)}'}), 500
+
+
+@purchases_bp.route('/api/purchases/<int:purchase_id>/cancel', methods=['POST'])
+def cancel_purchase_endpoint(purchase_id):
+    """Cancel purchase and atomically reverse inventory stock."""
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    reason = data.get('reason')
+
+    purchase, error = cancel_purchase_and_reverse_stock(
+        purchase_id=purchase_id,
+        user_id=session.get('user_id'),
+        reason=reason,
+    )
+    if error:
+        return jsonify({'success': False, 'message': error, 'error': error}), 400
+
+    return jsonify({
+        'success': True,
+        'message': f"Purchase #{purchase.id} cancelled successfully and stock was reversed.",
+        'purchase': purchase.to_dict(),
+    })
 
 
 @purchases_bp.route('/api/purchases/<int:purchase_id>', methods=['DELETE'])

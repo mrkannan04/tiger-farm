@@ -32,9 +32,10 @@ def create_app(config_name='default'):
     from .routes.notifications import notifications_bp
     from .routes.reports import reports_bp
     from .routes.settings import settings_bp
+    from .routes.reorders import reorders_bp
 
     for bp in (auth_bp, products_bp, purchases_bp, usage_bp,
-               dashboard_bp, analytics_bp, notifications_bp, reports_bp, settings_bp):
+               dashboard_bp, analytics_bp, notifications_bp, reports_bp, settings_bp, reorders_bp):
         app.register_blueprint(bp)
 
     @app.after_request

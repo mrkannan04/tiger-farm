@@ -43,6 +43,7 @@ class UnitPackageOpeningStockTests(unittest.TestCase):
         """
         res = self.client.post('/api/products', json={
             'name': 'UREA_TEST_OPENING',
+            'product_date': '2026-11-09',
             'category_id': 1,
             'default_packaging_type': 'Bag',
             'default_package_size': 25.0,
@@ -84,6 +85,7 @@ class UnitPackageOpeningStockTests(unittest.TestCase):
         # Create product with initial 50 kg Bag (2 bags)
         res = self.client.post('/api/products', json={
             'name': 'UREA_MULTI_PKG',
+            'product_date': '2026-11-09',
             'category_id': 1,
             'default_packaging_type': 'Bag',
             'default_package_size': 50.0,
@@ -150,6 +152,7 @@ class UnitPackageOpeningStockTests(unittest.TestCase):
         """
         res = self.client.post('/api/products', json={
             'name': 'UREA_USAGE_TEST',
+            'product_date': '2026-11-09',
             'category_id': 1,
             'default_packaging_type': 'Bag',
             'default_package_size': 25.0,
@@ -211,6 +214,7 @@ class UnitPackageOpeningStockTests(unittest.TestCase):
         # 1. Add product with direct KG
         res = self.client.post('/api/products', json={
             'name': 'UREA_DIRECT_KG',
+            'product_date': '2026-11-09',
             'category_id': 1,
             'unit_package': 'gen_kg',
             'default_packaging_type': 'Unit',

@@ -131,12 +131,14 @@ const PurchasesView = {
         <table>
           <thead>
             <tr>
-              <th>Date</th>
-              <th>Product & Batch</th>
+              <th>ID</th>
+              <th>Purchase Date</th>
+              <th>Product & Package</th>
               <th>Quantity</th>
               <th>Unit Rate</th>
-              <th>Total Cost</th>
-              <th>Payment Status</th>
+              <th>Total Amount</th>
+              <th>Status</th>
+              <th>Payment</th>
               <th>Supplier</th>
               <th>Invoice #</th>
               <th>Bill</th>
@@ -173,11 +175,18 @@ const PurchasesView = {
                 payBadge = `<span class="badge badge-partial" style="font-size:0.75rem;">🟣 ${pStatus.toUpperCase()}</span>`;
               }
 
+              const isCancelled = (p.status === 'Cancelled');
+              const statusBadge = isCancelled
+                ? `<span class="badge badge-danger" style="font-size:0.72rem; background:var(--red); color:#fff; font-weight:700;">❌ CANCELLED</span>`
+                : `<span class="badge badge-paid" style="font-size:0.72rem; font-weight:700;">✅ COMPLETED</span>`;
+
               return `
-              <tr>
+              <tr style="${isCancelled ? 'opacity:0.65; background:rgba(239,68,68,0.03);' : ''}">
+                <td><code>#${p.id}</code></td>
                 <td><strong>${p.purchase_date}</strong></td>
                 <td>
                   <strong style="color:var(--text);">${p.product_name}</strong>
+                  ${p.packaging_type ? `<div style="font-size:0.76rem; color:var(--green-dark); font-weight:600;">${p.packaging_type}${p.package_size ? ` (${p.package_size} ${p.package_unit || ''})` : ''}</div>` : ''}
                   ${p.batch_number ? `<div style="font-size:0.74rem; color:var(--text-mid); font-family:monospace;">Batch: ${p.batch_number}</div>` : ''}
                   ${expBadge}
                   ${p.remarks ? `<div style="font-size:0.74rem; color:var(--muted); margin-top:0.15rem;">${p.remarks}</div>` : ''}
@@ -192,6 +201,7 @@ const PurchasesView = {
                 </td>
                 <td>₹${(p.unit_price || 0).toLocaleString('en-IN')}</td>
                 <td><strong style="color:var(--green-dark);">₹${(p.total_price || 0).toLocaleString('en-IN')}</strong></td>
+                <td>${statusBadge}</td>
                 <td>${payBadge}</td>
                 <td>${p.supplier_name || '<span style="color:var(--muted);">—</span>'}</td>
                 <td>${p.invoice_number ? `<code>${p.invoice_number}</code>` : '<span style="color:var(--muted);">—</span>'}</td>
@@ -202,7 +212,12 @@ const PurchasesView = {
                   }
                 </td>
                 <td style="text-align:right;">
-                  <button class="btn btn-danger btn-sm btn-delete-purchase" data-id="${p.id}" data-prod="${p.product_name}" data-qty="${p.quantity} ${p.unit || ''}" title="Delete & reverse stock">🗑️</button>
+                  <div style="display:inline-flex; gap:0.35rem; align-items:center;">
+                    ${!isCancelled ? `
+                      <button class="btn btn-warning btn-xs btn-cancel-purchase" data-id="${p.id}" data-prod="${p.product_name}" data-qty="${p.quantity} ${p.unit || ''}" title="Cancel purchase & reverse stock" style="font-size:0.72rem; padding:0.25rem 0.5rem;">❌ Cancel</button>
+                    ` : ''}
+                    <button class="btn btn-danger btn-xs btn-delete-purchase" data-id="${p.id}" data-prod="${p.product_name}" data-qty="${p.quantity} ${p.unit || ''}" title="Delete & reverse stock" style="font-size:0.72rem; padding:0.25rem 0.5rem;">🗑️</button>
+                  </div>
                 </td>
               </tr>
             `;
@@ -325,6 +340,35 @@ const PurchasesView = {
           } catch (err) {
             App.showToast('Error: ' + err.message, 'error');
           }
+        }
+      });
+    });
+
+    container.querySelectorAll('.btn-cancel-purchase').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const prod = btn.dataset.prod;
+        const qty = btn.dataset.qty;
+        if (!confirm(`Cancel purchase #${id} (${qty} of ${prod})? This will automatically reverse and deduct ${qty} from your current inventory stock.`)) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/purchases/${id}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: 'Cancelled by user' }),
+          });
+          const data = await res.json();
+          if (res.ok && data.success !== false) {
+            App.showToast(data.message || `Purchase #${id} cancelled and stock reversed.`);
+            await App.loadMetadata();
+            this.fetchAndRenderList();
+          } else {
+            App.showToast(data.message || data.error || 'Failed to cancel purchase', 'error');
+          }
+        } catch (err) {
+          App.showToast('Error cancelling purchase: ' + err.message, 'error');
+        } finally {
+          btn.disabled = false;
         }
       });
     });

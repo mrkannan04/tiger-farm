@@ -138,6 +138,8 @@ def create_product():
             if total_opening_stock <= 0 and init_qty > 0:
                 total_opening_stock = init_qty
 
+        p_date = parse_date(data.get('product_date')) or date.today()
+
         product = Product(
             name=clean_name,
             category_id=int(data['category_id']),
@@ -150,6 +152,7 @@ def create_product():
             default_package_size=pkg_size,
             default_package_unit=pkg_unit,
             default_package_count=bag_qty if bag_qty > 0 else pkg_count,
+            product_date=p_date,
         )
         db.session.add(product)
         db.session.flush()
@@ -198,8 +201,10 @@ def create_product():
                 product_id=product.id,
                 movement_type='INITIAL',
                 quantity=product.current_quantity,
+                previous_quantity=0.0,
                 balance_after=product.current_quantity,
-                movement_date=date.today(),
+                user_id=session.get('user_id'),
+                movement_date=p_date,
                 packaging_type=pkg_type,
                 package_summary=pkg_summary,
                 remarks=f'Opening stock balance upon product creation ({pkg_summary})',
@@ -346,6 +351,11 @@ def update_product(product_id):
         if 'is_active' in data:
             product.is_active = bool(data['is_active'])
 
+        if 'product_date' in data and data['product_date']:
+            parsed_pd = parse_date(str(data['product_date']))
+            if parsed_pd:
+                product.product_date = parsed_pd
+
         if 'default_packaging_type' in data:
             product.default_packaging_type = data['default_packaging_type'] or 'Bag'
         if 'default_package_size' in data:
@@ -403,8 +413,10 @@ def update_product(product_id):
                         product_id=product.id,
                         movement_type='ADJUSTMENT',
                         quantity=diff,
+                        previous_quantity=old_qty,
                         balance_after=new_qty,
-                        movement_date=date.today(),
+                        user_id=session.get('user_id'),
+                        movement_date=product.product_date or date.today(),
                         packaging_type=pkg_type,
                         package_summary=f"Stock updated to {new_qty:g} {base_sym}",
                         remarks=f"Product master edit stock adjustment: {old_qty:g} -> {new_qty:g} {base_sym}",
@@ -692,7 +704,7 @@ def delete_unit(unit_id):
 @products_bp.route('/api/packaging-types', methods=['GET'])
 def list_packaging_types():
     _require_auth()
-    types = ['Bag', 'Bottle', 'Pouch', 'Container', 'Drum', 'Loose']
+    types = ['Bag', 'Bottle', 'Pouch', 'Container', 'Drum', 'Box', 'Can', 'Bundle', 'Pieces', 'Packet', 'Loose', 'Custom']
     return jsonify({
         'success': True,
         'packaging_types': types,
@@ -883,7 +895,8 @@ def adjust_stock():
         package_count=package_count,
         reason=reason,
         remarks=remarks,
-        adjustment_date=adjustment_date
+        adjustment_date=adjustment_date,
+        user_id=session.get('user_id')
     )
     if error:
         return jsonify({'success': False, 'message': error, 'error': error}), 400
@@ -906,5 +919,240 @@ def adjust_stock():
         'movement': movement.to_dict(),
         'product': product.to_dict(),
     }), 201
+
+
+@products_bp.route('/api/stock/add', methods=['POST'])
+def add_stock():
+    """
+    Dedicated endpoint to Add Stock to an existing product:
+    - Validates empty, zero, negative, and invalid quantities.
+    - Updates product stock atomically and permanently in database.
+    - Returns updated stock immediately.
+    - Records stock movement audit entry with user and previous quantity.
+    """
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    product_id = data.get('product_id')
+    if not product_id:
+        return jsonify({'success': False, 'message': 'Please select a product.'}), 400
+
+    product = Product.query.get(product_id)
+    if not product:
+        return jsonify({'success': False, 'message': 'Product not found in catalog.'}), 404
+
+    qty_val = data.get('quantity')
+    package_count = data.get('package_count')
+
+    if (qty_val is None or str(qty_val).strip() == '') and (package_count is None or str(package_count).strip() == ''):
+        return jsonify({'success': False, 'message': 'Quantity to add is required.'}), 400
+
+    try:
+        if qty_val is not None and str(qty_val).strip() != '':
+            q = float(qty_val)
+        else:
+            q = float(package_count)
+        if q <= 0:
+            return jsonify({'success': False, 'message': 'Quantity must be greater than zero.'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Please enter a valid numeric quantity.'}), 400
+
+    reason = (data.get('reason') or 'Stock Added').strip()
+    remarks = (data.get('remarks') or '').strip() or None
+    adj_date = parse_date(data.get('adjustment_date') or data.get('date')) or date.today()
+
+    p_size = float(data['package_size']) if (data.get('package_size') not in (None, '') and str(data.get('package_size')).strip() != '') else None
+    p_cnt = float(package_count) if (package_count not in (None, '') and str(package_count).strip() != '') else None
+
+    movement, error = record_stock_adjustment(
+        product_id=int(product_id),
+        adjustment_type='addition',
+        quantity=float(qty_val) if (qty_val not in (None, '') and str(qty_val).strip() != '') else None,
+        packaging_type=data.get('packaging_type'),
+        package_size=p_size,
+        package_unit=data.get('package_unit'),
+        package_count=p_cnt,
+        reason=reason,
+        remarks=remarks,
+        adjustment_date=adj_date,
+        user_id=session.get('user_id')
+    )
+
+    if error:
+        return jsonify({'success': False, 'message': error, 'error': error}), 400
+
+    unit_sym = product.unit.symbol if product.unit else ''
+    return jsonify({
+        'success': True,
+        'message': f"Added stock to {product.name}. Current stock is now {product.current_quantity:g} {unit_sym}.",
+        'product': product.to_dict(),
+        'previous_quantity': movement.previous_quantity if movement else None,
+        'added_quantity': movement.quantity if movement else total_qty,
+        'new_quantity': product.current_quantity,
+        'movement': movement.to_dict() if movement else None,
+    }), 201
+
+
+@products_bp.route('/api/stock/edit', methods=['POST', 'PUT'])
+def edit_stock():
+    """
+    Dedicated endpoint to Edit / Correct Stock of an existing product:
+    - Validates target stock quantity (cannot be empty, negative, or invalid).
+    - Saves updated stock permanently in the database.
+    - Records stock difference with previous quantity, user, and reason in audit ledger.
+    """
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+    product_id = data.get('product_id')
+    if not product_id:
+        return jsonify({'success': False, 'message': 'Product is required.'}), 400
+
+    product = Product.query.get(product_id)
+    if not product:
+        return jsonify({'success': False, 'message': 'Product not found in catalog.'}), 404
+
+    target_qty_raw = data.get('target_quantity') if data.get('target_quantity') is not None else data.get('current_quantity')
+    if target_qty_raw is None or str(target_qty_raw).strip() == '':
+        return jsonify({'success': False, 'message': 'Stock quantity is required.'}), 400
+
+    try:
+        target_qty = float(target_qty_raw)
+        if target_qty < 0:
+            return jsonify({'success': False, 'message': 'Stock quantity cannot be negative.'}), 400
+    except (ValueError, TypeError):
+        return jsonify({'success': False, 'message': 'Please enter a valid numeric stock quantity.'}), 400
+
+    reason = (data.get('reason') or 'Stock Correction / Physical Count').strip()
+    remarks = (data.get('remarks') or '').strip() or None
+    adj_date = parse_date(data.get('adjustment_date') or data.get('date')) or date.today()
+
+    try:
+        old_qty = product.current_quantity or 0.0
+        diff = round(target_qty - old_qty, 4)
+        unit_sym = product.unit.symbol if product.unit else 'kg'
+
+        product.current_quantity = target_qty
+
+        # Rebuild package stock breakdown if bag / loose values provided
+        bag_qty = float(data.get('bag_quantity', 0.0))
+        loose_qty = float(data.get('loose_quantity', 0.0))
+        pkg_type = product.default_packaging_type or 'Bag'
+        pkg_size = product.default_package_size
+        pkg_unit = product.default_package_unit or unit_sym
+
+        is_discrete = (pkg_type.lower() in ('bag', 'bottle', 'pouch', 'container', 'drum', 'box')) and (pkg_size is not None and pkg_size > 0)
+        ProductPackageStock.query.filter_by(product_id=product.id).delete(synchronize_session=False)
+
+        if is_discrete and bag_qty > 0:
+            pkg_mult = pkg_size
+            if pkg_unit.lower() in ('g', 'gm', 'ml'):
+                pkg_mult = pkg_size / 1000.0
+            db.session.add(ProductPackageStock(
+                product_id=product.id,
+                packaging_type=pkg_type,
+                package_size=pkg_size,
+                unit_symbol=pkg_unit,
+                package_count=bag_qty,
+                total_quantity=round(bag_qty * pkg_mult, 4),
+            ))
+
+        if loose_qty > 0 or not is_discrete:
+            loose_c = target_qty if not is_discrete else loose_qty
+            db.session.add(ProductPackageStock(
+                product_id=product.id,
+                packaging_type='Loose',
+                package_size=1.0,
+                unit_symbol=unit_sym,
+                package_count=loose_c,
+                total_quantity=loose_c,
+            ))
+
+        movement = None
+        if abs(diff) > 0.0001:
+            action_desc = "Increased" if diff > 0 else "Decreased"
+            movement = StockMovement(
+                product_id=product.id,
+                movement_type='ADJUSTMENT',
+                quantity=diff,
+                previous_quantity=old_qty,
+                balance_after=target_qty,
+                user_id=session.get('user_id'),
+                movement_date=adj_date,
+                packaging_type=pkg_type,
+                package_summary=f"Stock updated to {target_qty:g} {unit_sym}",
+                remarks=f"Stock Edit ({action_desc} by {abs(diff):g} {unit_sym}): [{reason}] {remarks or ''}".strip(),
+            )
+            db.session.add(movement)
+
+        db.session.add(ActivityLog(
+            user_id=session.get('user_id'),
+            action=f"Updated stock of {product.name} from {old_qty:g} to {target_qty:g} {unit_sym}. ({reason})",
+            entity_type='stock_edit',
+            entity_id=product.id,
+        ))
+
+        _check_and_update_notifications(product)
+        db.session.commit()
+
+        return jsonify({
+            'success': True,
+            'message': f"Stock for {product.name} updated to {target_qty:g} {unit_sym} successfully.",
+            'product': product.to_dict(),
+            'previous_quantity': old_qty,
+            'updated_quantity': target_qty,
+            'new_quantity': target_qty,
+            'quantity_difference': diff,
+            'difference': diff,
+            'movement': movement.to_dict() if movement else None,
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Failed to update stock: {str(e)}'}), 500
+
+
+@products_bp.route('/api/stock/adjustments', methods=['GET'])
+def list_stock_adjustments():
+    """
+    Retrieve stock adjustment history with:
+    - Product name
+    - Previous quantity
+    - Updated quantity
+    - Quantity difference
+    - Adjustment date and time
+    - User who performed adjustment
+    - Reason for adjustment
+    """
+    auth_err = _require_auth()
+    if auth_err:
+        return auth_err
+
+    product_id = request.args.get('product_id')
+    page = int(request.args.get('page', 1))
+    per_page = int(request.args.get('per_page', 50))
+
+    query = StockMovement.query.filter(StockMovement.movement_type.in_(['ADJUSTMENT', 'INITIAL', 'REORDER_RECEIVED', 'PURCHASE_CANCELLED']))
+    if product_id:
+        try:
+            query = query.filter(StockMovement.product_id == int(product_id))
+        except (ValueError, TypeError):
+            pass
+
+    query = query.order_by(StockMovement.movement_date.desc(), StockMovement.id.desc())
+    total = query.count()
+    movements = query.offset((page - 1) * per_page).limit(per_page).all()
+
+    return jsonify({
+        'success': True,
+        'adjustments': [m.to_dict() for m in movements],
+        'total': total,
+        'page': page,
+        'per_page': per_page,
+        'pages': max((total + per_page - 1) // per_page, 1),
+    })
 
 

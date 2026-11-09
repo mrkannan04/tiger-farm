@@ -1,6 +1,6 @@
 from sqlalchemy import text
 from .models import (
-    db, User, Category, Unit, Field, Supplier, Product, PackageMaster, ProductPackageStock
+    db, User, Category, Unit, Field, Supplier, Product, PackageMaster, ProductPackageStock, Reorder
 )
 
 
@@ -32,6 +32,8 @@ def _migrate_schema():
                     "ALTER TABLE products ADD COLUMN IF NOT EXISTS default_package_size FLOAT",
                     "ALTER TABLE products ADD COLUMN IF NOT EXISTS default_package_unit VARCHAR(20) DEFAULT 'kg'",
                     "ALTER TABLE products ADD COLUMN IF NOT EXISTS default_package_count FLOAT DEFAULT 1.0",
+                    "ALTER TABLE products ADD COLUMN IF NOT EXISTS product_date DATE",
+                    "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'Completed'",
                     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS packaging_type VARCHAR(50)",
                     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS package_size FLOAT",
                     "ALTER TABLE purchases ADD COLUMN IF NOT EXISTS package_unit VARCHAR(20)",
@@ -49,6 +51,8 @@ def _migrate_schema():
                     "ALTER TABLE usages ADD COLUMN IF NOT EXISTS crop_season VARCHAR(100)",
                     "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS packaging_type VARCHAR(50)",
                     "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS package_summary VARCHAR(200)",
+                    "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS user_id INTEGER",
+                    "ALTER TABLE stock_movements ADD COLUMN IF NOT EXISTS previous_quantity FLOAT",
                 ]
                 for stmt in pg_stmts:
                     try:
@@ -92,10 +96,14 @@ def _migrate_schema():
                 conn.execute(text("ALTER TABLE products ADD COLUMN default_package_unit VARCHAR(20) DEFAULT 'kg'"))
             if 'default_package_count' not in prod_cols:
                 conn.execute(text("ALTER TABLE products ADD COLUMN default_package_count FLOAT DEFAULT 1.0"))
+            if 'product_date' not in prod_cols:
+                conn.execute(text("ALTER TABLE products ADD COLUMN product_date DATE"))
             conn.commit()
 
             # Check purchases table packaging columns
             purch_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(purchases)")).fetchall()]
+            if 'status' not in purch_cols:
+                conn.execute(text("ALTER TABLE purchases ADD COLUMN status VARCHAR(30) DEFAULT 'Completed'"))
             if 'packaging_type' not in purch_cols:
                 conn.execute(text("ALTER TABLE purchases ADD COLUMN packaging_type VARCHAR(50)"))
             if 'package_size' not in purch_cols:
@@ -138,6 +146,10 @@ def _migrate_schema():
                 conn.execute(text("ALTER TABLE stock_movements ADD COLUMN packaging_type VARCHAR(50)"))
             if 'package_summary' not in mv_cols:
                 conn.execute(text("ALTER TABLE stock_movements ADD COLUMN package_summary VARCHAR(200)"))
+            if 'user_id' not in mv_cols:
+                conn.execute(text("ALTER TABLE stock_movements ADD COLUMN user_id INTEGER"))
+            if 'previous_quantity' not in mv_cols:
+                conn.execute(text("ALTER TABLE stock_movements ADD COLUMN previous_quantity FLOAT"))
             conn.commit()
 
     except Exception as e:
@@ -174,8 +186,9 @@ def _seed_defaults():
     default_units = [
         ('Kilogram', 'KG'), ('Gram', 'GM'), ('Milligram', 'MG'),
         ('Liter', 'L'), ('Milliliter', 'ML'), ('Unit', 'Unit'),
-        ('Packet', 'Pkt'), ('Bag', 'Bag'), ('Bottle', 'Btl'),
-        ('Box', 'Box'), ('Pouch', 'Pouch'), ('Ton', 'Ton'),
+        ('Pieces', 'pcs'), ('Packet', 'Pkt'), ('Bag', 'Bag'), ('Bottle', 'Btl'),
+        ('Box', 'Box'), ('Can', 'Can'), ('Bundle', 'Bundle'),
+        ('Pouch', 'Pouch'), ('Ton', 'Ton'), ('Custom', 'Custom'),
     ]
     for name, symbol in default_units:
         if not Unit.query.filter(

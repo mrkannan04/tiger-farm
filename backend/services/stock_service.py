@@ -1,5 +1,8 @@
 from datetime import date, timedelta
-from ..models import db, Product, StockMovement, Notification, Purchase, Usage, ProductPackageStock, PackageMaster
+from ..models import (
+    db, Product, StockMovement, Notification, Purchase, Usage,
+    ProductPackageStock, PackageMaster, Reorder, ActivityLog
+)
 
 
 def record_purchase(product_id, quantity=None, unit_id=None, unit_price=0.0,
@@ -467,7 +470,7 @@ def _check_and_update_notifications(product):
 
 def record_stock_adjustment(product_id, adjustment_type, quantity=None,
                             packaging_type=None, package_size=None, package_unit=None, package_count=None,
-                            reason=None, remarks=None, adjustment_date=None):
+                            reason=None, remarks=None, adjustment_date=None, user_id=None):
     """
     Adjust product inventory for damaged goods, spillage, audit reconciliation, or write-offs.
     adjustment_type: 'addition' or 'deduction'
@@ -541,6 +544,7 @@ def record_stock_adjustment(product_id, adjustment_type, quantity=None,
                 return None, f"Insufficient {p_size:g} {p_unit} {pkg_type} Stock. Available: {stock_item.package_count:g} {noun}."
 
     try:
+        old_qty = product.current_quantity or 0.0
         # Update product current_quantity
         product.current_quantity = max(0.0, round(product.current_quantity + signed_qty, 4))
 
@@ -582,7 +586,9 @@ def record_stock_adjustment(product_id, adjustment_type, quantity=None,
             product_id=product.id,
             movement_type='ADJUSTMENT',
             quantity=signed_qty,
+            previous_quantity=old_qty,
             balance_after=product.current_quantity,
+            user_id=user_id,
             packaging_type=pkg_type or None,
             package_summary=package_summary or f"{quantity:g} {unit_sym}",
             movement_date=adjustment_date,
@@ -644,4 +650,234 @@ def check_expiry_notifications():
     except Exception as e:
         db.session.rollback()
         print(f"[WARN] check_expiry_notifications error: {e}")
+
+
+def receive_reorder(reorder_id, received_quantity=None, user_id=None):
+    """
+    Transaction-first reorder receipt:
+    1. Verify reorder exists and is eligible for receipt.
+    2. Update received quantity and determine status (Received vs Partially Received).
+    3. Increment product stock and ProductPackageStock breakdown atomically.
+    4. Log StockMovement with type REORDER_RECEIVED, tracking user and previous quantity.
+    5. Commit transaction atomically.
+    Returns (reorder, None) on success or (None, error_msg) on failure.
+    """
+    reorder = Reorder.query.get(reorder_id)
+    if not reorder:
+        return None, 'Reorder record not found.'
+
+    if reorder.status == 'Received':
+        return None, 'This reorder request has already been fully received.'
+    if reorder.status == 'Cancelled':
+        return None, 'Cannot receive a cancelled reorder request.'
+
+    product = reorder.product
+    if not product:
+        return None, 'Associated product not found in catalog.'
+
+    remaining = reorder.remaining_quantity
+    if received_quantity is None or received_quantity <= 0:
+        recv_qty = remaining
+    else:
+        try:
+            recv_qty = float(received_quantity)
+        except (ValueError, TypeError):
+            return None, 'Received quantity must be a valid number.'
+
+    if recv_qty <= 0:
+        return None, 'Received quantity must be greater than zero.'
+
+    try:
+        old_stock = product.current_quantity or 0.0
+        new_received_total = round((reorder.received_quantity or 0.0) + recv_qty, 4)
+        reorder.received_quantity = new_received_total
+        reorder.received_date = date.today()
+
+        if reorder.received_quantity >= reorder.quantity:
+            reorder.status = 'Received'
+        else:
+            reorder.status = 'Partially Received'
+
+        # Increment product inventory
+        product.current_quantity = round(old_stock + recv_qty, 4)
+
+        # Update package stock breakdown
+        pkg_type = reorder.packaging_type
+        p_size = reorder.package_size
+        p_unit = reorder.package_unit or (product.unit.symbol if product.unit else 'kg')
+        unit_sym = product.unit.symbol if product.unit else 'kg'
+
+        if pkg_type and pkg_type.lower() != 'loose' and p_size and p_size > 0:
+            mult = PackageMaster.compute_multiplier(p_size, p_unit)
+            bag_count_delta = round(recv_qty / mult, 4) if mult > 0 else recv_qty
+            stock_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == pkg_type.lower(),
+                ProductPackageStock.package_size == p_size,
+                db.func.lower(ProductPackageStock.unit_symbol) == p_unit.lower()
+            ).first()
+
+            if stock_item:
+                stock_item.package_count = round(stock_item.package_count + bag_count_delta, 4)
+                stock_item.total_quantity = round(stock_item.total_quantity + recv_qty, 4)
+            else:
+                db.session.add(ProductPackageStock(
+                    product_id=product.id,
+                    packaging_type=pkg_type,
+                    package_size=p_size,
+                    unit_symbol=p_unit,
+                    package_count=bag_count_delta,
+                    total_quantity=round(recv_qty, 4)
+                ))
+        else:
+            # Loose package stock
+            loose_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == 'loose'
+            ).first()
+            if loose_item:
+                loose_item.package_count = round(loose_item.package_count + recv_qty, 4)
+                loose_item.total_quantity = round(loose_item.total_quantity + recv_qty, 4)
+            else:
+                db.session.add(ProductPackageStock(
+                    product_id=product.id,
+                    packaging_type='Loose',
+                    package_size=1.0,
+                    unit_symbol=unit_sym,
+                    package_count=recv_qty,
+                    total_quantity=recv_qty
+                ))
+
+        # Record stock movement ledger
+        movement = StockMovement(
+            product_id=product.id,
+            movement_type='REORDER_RECEIVED',
+            quantity=recv_qty,
+            previous_quantity=old_stock,
+            balance_after=product.current_quantity,
+            reference_id=reorder.id,
+            user_id=user_id,
+            packaging_type=pkg_type,
+            package_summary=reorder.package_summary or f"{recv_qty:g} {unit_sym}",
+            movement_date=date.today(),
+            remarks=f"Reorder #{reorder.id} received: +{recv_qty:g} {unit_sym} (Status: {reorder.status}) from {reorder.supplier or 'Supplier'}",
+        )
+        db.session.add(movement)
+
+        # Activity log
+        db.session.add(ActivityLog(
+            user_id=user_id,
+            action=f"Confirmed receipt of Reorder #{reorder.id}: +{recv_qty:g} {unit_sym} of {product.name}. Status: '{reorder.status}'.",
+            entity_type='reorder',
+            entity_id=reorder.id,
+        ))
+
+        _check_and_update_notifications(product)
+        db.session.commit()
+        return reorder, None
+    except Exception as e:
+        db.session.rollback()
+        return None, f"Database transaction failed: {str(e)}"
+
+
+def cancel_reorder(reorder_id, user_id=None, reason=None):
+    """Cancel a reorder without affecting current stock."""
+    reorder = Reorder.query.get(reorder_id)
+    if not reorder:
+        return None, 'Reorder record not found.'
+    if reorder.status == 'Received':
+        return None, 'Cannot cancel a reorder that has already been fully received.'
+    if reorder.status == 'Cancelled':
+        return None, 'Reorder is already cancelled.'
+
+    try:
+        reorder.status = 'Cancelled'
+        if reason:
+            reorder.notes = f"{reorder.notes or ''} [Cancelled: {reason}]".strip()
+        db.session.add(ActivityLog(
+            user_id=user_id,
+            action=f"Cancelled Reorder #{reorder.id} for {reorder.product.name if reorder.product else 'product'}. Stock unchanged.",
+            entity_type='reorder',
+            entity_id=reorder.id,
+        ))
+        db.session.commit()
+        return reorder, None
+    except Exception as e:
+        db.session.rollback()
+        return None, f"Failed to cancel reorder: {str(e)}"
+
+
+def cancel_purchase_and_reverse_stock(purchase_id, user_id=None, reason=None):
+    """
+    Cancel a purchase and reverse the added stock quantity atomically.
+    """
+    purchase = Purchase.query.get(purchase_id)
+    if not purchase:
+        return None, 'Purchase record not found.'
+
+    if purchase.status == 'Cancelled':
+        return None, 'This purchase is already cancelled.'
+
+    product = purchase.product
+    if not product:
+        return None, 'Associated product not found.'
+
+    try:
+        old_stock = product.current_quantity or 0.0
+        reversed_qty = purchase.quantity
+        product.current_quantity = max(0.0, round(old_stock - reversed_qty, 4))
+        purchase.status = 'Cancelled'
+        if reason:
+            purchase.remarks = f"{purchase.remarks or ''} [Cancelled: {reason}]".strip()
+
+        # Update package stock breakdown
+        pkg_type = purchase.packaging_type
+        p_size = purchase.package_size
+        p_unit = purchase.package_unit or (product.unit.symbol if product.unit else 'kg')
+        p_count = purchase.package_count
+
+        if pkg_type and pkg_type.lower() != 'loose' and p_size and p_size > 0:
+            stock_item = ProductPackageStock.query.filter(
+                ProductPackageStock.product_id == product.id,
+                db.func.lower(ProductPackageStock.packaging_type) == pkg_type.lower(),
+                ProductPackageStock.package_size == p_size,
+                db.func.lower(ProductPackageStock.unit_symbol) == p_unit.lower()
+            ).first()
+            if stock_item:
+                count_deduct = p_count or (reversed_qty / p_size)
+                stock_item.package_count = max(0.0, round(stock_item.package_count - count_deduct, 4))
+                stock_item.total_quantity = max(0.0, round(stock_item.total_quantity - reversed_qty, 4))
+                if stock_item.package_count <= 0 and stock_item.total_quantity <= 0:
+                    db.session.delete(stock_item)
+
+        # Record reversal stock movement
+        movement = StockMovement(
+            product_id=product.id,
+            movement_type='PURCHASE_CANCELLED',
+            quantity=-reversed_qty,
+            previous_quantity=old_stock,
+            balance_after=product.current_quantity,
+            reference_id=purchase.id,
+            user_id=user_id,
+            packaging_type=pkg_type,
+            package_summary=purchase.package_summary,
+            movement_date=date.today(),
+            remarks=f"Purchase #{purchase.id} cancelled: -{reversed_qty:g} {product.unit.symbol if product.unit else ''}. Reason: {reason or 'Not specified'}",
+        )
+        db.session.add(movement)
+
+        db.session.add(ActivityLog(
+            user_id=user_id,
+            action=f"Cancelled Purchase #{purchase.id} of {product.name} (-{reversed_qty:g} {product.unit.symbol if product.unit else ''}). Stock reversed.",
+            entity_type='purchase',
+            entity_id=purchase.id,
+        ))
+
+        _check_and_update_notifications(product)
+        db.session.commit()
+        return purchase, None
+    except Exception as e:
+        db.session.rollback()
+        return None, f"Failed to cancel purchase: {str(e)}"
+
 

@@ -93,7 +93,7 @@ const DashboardView = {
       </div>
       ` : ''}
 
-      <!-- Stats Grid -->
+      <!-- Stats Grid (Synchronized from Live Database - Step 3) -->
       <div class="stats-grid">
         <div class="stat-item">
           <div class="stat-label">Total Products</div>
@@ -101,19 +101,29 @@ const DashboardView = {
           <div class="stat-sub">Active catalog items</div>
         </div>
         <div class="stat-item">
+          <div class="stat-label">Available Stock</div>
+          <div class="stat-value green">${data.available_stock || 0}</div>
+          <div class="stat-sub">Items with stock > 0</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-label">Total Stock Quantity</div>
+          <div class="stat-value" style="color:var(--green-dark);">${(data.total_stock_quantity || 0).toLocaleString('en-IN')}</div>
+          <div class="stat-sub">Physical inventory volume</div>
+        </div>
+        <div class="stat-item" style="cursor:pointer;" onclick="App.navigate('reorders')">
+          <div class="stat-label">Pending Reorders</div>
+          <div class="stat-value" style="color:#2563eb;">${data.pending_reorders_count || 0}</div>
+          <div class="stat-sub">Vendor reorder requests</div>
+        </div>
+        <div class="stat-item" style="cursor:pointer;" onclick="App.navigate('purchases')">
+          <div class="stat-label">Pending Purchases</div>
+          <div class="stat-value" style="color:#d97706;">${data.pending_purchases_count || 0}</div>
+          <div class="stat-sub">Credit / pending invoices</div>
+        </div>
+        <div class="stat-item">
           <div class="stat-label">Stock Valuation</div>
           <div class="stat-value green">₹${(data.total_stock_value || 0).toLocaleString('en-IN')}</div>
           <div class="stat-sub">Estimated inventory worth</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">Month's Purchases</div>
-          <div class="stat-value">₹${(data.monthly_purchase || 0).toLocaleString('en-IN')}</div>
-          <div class="stat-sub">Spent this calendar month</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-label">Pending Credit</div>
-          <div class="stat-value" style="color:#d97706;">₹${(data.total_pending_credit || 0).toLocaleString('en-IN')}</div>
-          <div class="stat-sub">Payables to suppliers</div>
         </div>
         <div class="stat-item">
           <div class="stat-label">Low Stock Items</div>
@@ -156,6 +166,15 @@ const DashboardView = {
           <div class="card">
             <h3 class="card-title">⚠️ Stock Attention Needed</h3>
             ${this.renderLowStockList(data.low_stock_products || [])}
+          </div>
+
+          <!-- Recent Stock Activities (Step 3) -->
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.75rem;">
+              <h3 class="card-title" style="margin-bottom:0;">📊 Recent Stock Activities</h3>
+              <span class="badge badge-green" style="font-size:0.75rem;">Audit Trail</span>
+            </div>
+            ${this.renderStockActivities(data.recent_stock_activities || [])}
           </div>
 
           <!-- Top Used Products -->
@@ -299,6 +318,36 @@ const DashboardView = {
       </div>`;
   },
 
+  renderStockActivities(movements) {
+    if (!movements || !movements.length) {
+      return '<p style="color:var(--muted); font-size:0.85rem;">No recent stock movements.</p>';
+    }
+    return `
+      <div style="display:flex; flex-direction:column; gap:0.6rem;">
+        ${movements.slice(0, 6).map(m => {
+          const isPos = m.quantity > 0;
+          const diffSign = isPos ? '+' : '';
+          const badgeClass = m.movement_type === 'PURCHASE' ? 'badge-green' :
+                             m.movement_type === 'REORDER_RECEIVED' ? 'badge-green' :
+                             m.movement_type === 'USAGE' ? 'badge-yellow' : 'badge-ghost';
+          return `
+            <div style="font-size:0.82rem; border-left:2.5px solid ${isPos ? 'var(--green-mid)' : 'var(--amber)'}; padding-left:0.6rem;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <strong style="color:var(--text);">${m.product_name}</strong>
+                <span class="badge ${badgeClass}" style="font-size:0.72rem; padding:0.15rem 0.4rem;">
+                  ${diffSign}${m.quantity} (${m.movement_type})
+                </span>
+              </div>
+              <div style="color:var(--text-mid); font-size:0.75rem; margin-top:0.15rem;">
+                Stock: ${m.previous_quantity} &rarr; <strong>${m.balance_after}</strong> • By ${m.username || 'System'}
+              </div>
+              <div style="color:var(--muted); font-size:0.72rem;">${m.movement_date || ''} — ${m.remarks || ''}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>`;
+  },
+
   renderActivityLog(logs) {
     if (!logs.length) {
       return '<p style="color:var(--muted); font-size:0.85rem;">No recent activities logged.</p>';
@@ -315,24 +364,11 @@ const DashboardView = {
   },
 
   bindActionButtons(container) {
-    // Quick reorder button triggers purchase modal with that product preselected and packaging UI fully synced
+    // Quick reorder button opens Reorder modal with product preselected
     container.querySelectorAll('.btn-quick-reorder').forEach(btn => {
       btn.addEventListener('click', () => {
         const prodId = btn.dataset.prodId;
-        const form = document.getElementById('formPurchase');
-        if (form) form.reset();
-        const today = new Date().toISOString().split('T')[0];
-        const dIn = document.getElementById('purchaseDate');
-        if (dIn) dIn.value = today;
-
-        const pSelect = document.getElementById('purchaseProduct');
-        if (pSelect) {
-          pSelect.value = prodId;
-          if (typeof App.syncPurchasePackagingUI === 'function') {
-            App.syncPurchasePackagingUI(true);
-          }
-        }
-        App.openModal('modalPurchase');
+        App.openReorderModal(prodId);
       });
     });
 

@@ -48,6 +48,12 @@ def validate_product(data):
     except (TypeError, ValueError):
         errors['minimum_stock'] = 'Please enter a valid minimum stock value.'
 
+    p_date = data.get('product_date')
+    if not p_date:
+        errors['product_date'] = 'Product Date is required. Please choose or select the date.'
+    elif not parse_date(str(p_date)):
+        errors['product_date'] = 'Please enter a valid Product Date (YYYY-MM-DD).'
+
     return errors
 
 
@@ -122,6 +128,38 @@ def validate_usage(data):
     use_date_str = data.get('usage_date')
     if not use_date_str or not parse_date(use_date_str):
         errors['usage_date'] = 'Usage date is compulsory. Please choose or select the date.'
+
+    return errors
+
+
+def validate_reorder(data):
+    errors = {}
+    if not data.get('product_id'):
+        errors['product_id'] = 'Please select a product to reorder.'
+
+    qty = data.get('quantity')
+    pkg_count = data.get('package_count')
+    if (qty is None or str(qty).strip() == '' or float(qty or 0) <= 0) and pkg_count:
+        try:
+            if float(pkg_count) <= 0:
+                errors['quantity'] = 'Reorder quantity must be greater than zero.'
+        except (TypeError, ValueError):
+            errors['quantity'] = 'Please enter a valid package quantity.'
+    else:
+        try:
+            qty_val = float(qty)
+            if qty_val <= 0:
+                errors['quantity'] = 'Reorder quantity must be greater than zero.'
+        except (TypeError, ValueError):
+            errors['quantity'] = 'Please enter a valid quantity.'
+
+    r_date = data.get('reorder_date')
+    if not r_date or not parse_date(str(r_date)):
+        errors['reorder_date'] = 'Reorder date is compulsory. Please choose or select the date.'
+
+    exp_date = data.get('expected_delivery_date')
+    if exp_date and not parse_date(str(exp_date)):
+        errors['expected_delivery_date'] = 'Please enter a valid expected delivery date.'
 
     return errors
 

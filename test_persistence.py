@@ -11,6 +11,7 @@ import json
 import io
 import uuid
 import unittest
+from datetime import datetime
 
 # Ensure tiger-farm root is on sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -65,6 +66,7 @@ class TigerFarmPersistenceTests(unittest.TestCase):
             'unit_id': unit_id,
             'current_quantity': qty,
             'minimum_stock': min_stock,
+            'product_date': datetime.now().date().isoformat(),
             'description': 'Automated persistence verification item'
         })
         self.assertIn(res.status_code, [200, 201])

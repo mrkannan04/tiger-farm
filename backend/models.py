@@ -268,6 +268,7 @@ class Product(db.Model):
     default_package_size = db.Column(db.Float, nullable=True)
     default_package_unit = db.Column(db.String(20), nullable=True, default='kg')
     default_package_count = db.Column(db.Float, nullable=True, default=1.0)
+    product_date = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -427,6 +428,8 @@ class Product(db.Model):
             'loose_stock': self.loose_stock,
             'package_breakdown': self.get_package_breakdown(),
             'stock_summary': self.get_stock_summary(),
+            'product_date': self.product_date.strftime('%d %b %Y') if self.product_date else None,
+            'product_date_iso': self.product_date.isoformat() if self.product_date else None,
             'created_at': self.created_at.strftime('%d %b %Y') if self.created_at else None,
             'updated_at': self.updated_at.strftime('%d %b %Y') if self.updated_at else None,
         }
@@ -468,6 +471,7 @@ class Purchase(db.Model):
     invoice_number = db.Column(db.String(100), nullable=True)
     remarks = db.Column(db.Text, nullable=True)
     bill_file = db.Column(db.String(250), nullable=True)
+    status = db.Column(db.String(30), default='Completed')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     unit = db.relationship('Unit', foreign_keys=[unit_id])
@@ -502,6 +506,7 @@ class Purchase(db.Model):
             'remarks': self.remarks,
             'bill_file': self.bill_file,
             'batch_number': self.batch_number,
+            'status': self.status or 'Completed',
             'expiry_date': self.expiry_date.strftime('%Y-%m-%d') if self.expiry_date else None,
             'expiry_date_formatted': self.expiry_date.strftime('%d %b %Y') if self.expiry_date else None,
             'payment_status': self.payment_status or 'Paid',
@@ -567,28 +572,41 @@ class StockMovement(db.Model):
     movement_type = db.Column(db.String(20), nullable=False)  # INITIAL / PURCHASE / USAGE / ADJUSTMENT
     quantity = db.Column(db.Float, nullable=False)           # positive or negative
     balance_after = db.Column(db.Float, nullable=False)
-    reference_id = db.Column(db.Integer, nullable=True)      # purchase.id or usage.id
+    previous_quantity = db.Column(db.Float, nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    reference_id = db.Column(db.Integer, nullable=True)      # purchase.id, usage.id, or reorder.id
     packaging_type = db.Column(db.String(50), nullable=True)
     package_summary = db.Column(db.String(200), nullable=True)
     movement_date = db.Column(db.Date, nullable=False, index=True)
     remarks = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    user = db.relationship('User', foreign_keys=[user_id])
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
     def to_dict(self):
+        prev_q = self.previous_quantity if self.previous_quantity is not None else round(self.balance_after - self.quantity, 4)
         return {
             'id': self.id,
             'product_id': self.product_id,
+            'product_name': self.product.name if self.product else 'Unknown',
             'movement_type': (self.movement_type or '').upper(),
             'quantity': self.quantity,
-            'balance_after': self.balance_after,
+            'quantity_difference': self.quantity,
+            'previous_quantity': round(prev_q, 4),
+            'updated_quantity': round(self.balance_after, 4),
+            'balance_after': round(self.balance_after, 4),
+            'user_id': self.user_id,
+            'username': self.user.username if self.user else 'System',
             'packaging_type': self.packaging_type,
             'package_summary': self.package_summary,
             'movement_date': self.movement_date.strftime('%d %b %Y') if self.movement_date else None,
+            'movement_date_iso': self.movement_date.isoformat() if self.movement_date else None,
             'remarks': self.remarks,
             'created_at': self.created_at.strftime('%d %b %Y, %I:%M %p') if self.created_at else None,
+            'created_at_iso': self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -645,4 +663,79 @@ class ActivityLog(db.Model):
             'action': self.action,
             'entity_type': self.entity_type,
             'created_at': self.created_at.strftime('%d %b %Y, %I:%M %p') if self.created_at else None,
+        }
+
+
+class Reorder(db.Model):
+    """Reorder requests for stock replenish."""
+    __tablename__ = 'reorders'
+
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id', ondelete='CASCADE'), nullable=False, index=True)
+    quantity = db.Column(db.Float, nullable=False)  # Total in product base unit
+    packaging_type = db.Column(db.String(50), nullable=True)  # Bag, Bottle, Loose, etc.
+    package_size = db.Column(db.Float, nullable=True)
+    package_unit = db.Column(db.String(20), nullable=True)    # kg, g, L, ml
+    package_count = db.Column(db.Float, nullable=True)        # Number of bags / bottles
+    package_summary = db.Column(db.String(200), nullable=True)
+    unit_price = db.Column(db.Float, nullable=True)
+    total_price = db.Column(db.Float, nullable=True)
+    status = db.Column(db.String(30), default='Pending', index=True)  # Pending, Ordered, Partially Received, Received, Cancelled
+    reorder_date = db.Column(db.Date, nullable=False, index=True)
+    expected_delivery_date = db.Column(db.Date, nullable=True)
+    received_date = db.Column(db.Date, nullable=True)
+    received_quantity = db.Column(db.Float, default=0.0)
+    supplier_id = db.Column(db.Integer, db.ForeignKey('suppliers.id'), nullable=True)
+    supplier_name = db.Column(db.String(150), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    product = db.relationship('Product', backref=db.backref('reorders', lazy=True, cascade='all, delete-orphan'))
+    created_by = db.relationship('User', foreign_keys=[created_by_id])
+    supplier_ref = db.relationship('Supplier', foreign_keys=[supplier_id])
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    @property
+    def supplier(self):
+        return self.supplier_name or (self.supplier_ref.name if self.supplier_ref else None)
+
+    @property
+    def remaining_quantity(self):
+        return max(0.0, round(self.quantity - (self.received_quantity or 0.0), 4))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'product_id': self.product_id,
+            'product_name': self.product.name if self.product else 'Unknown',
+            'product_unit': self.product.unit.symbol if self.product and self.product.unit else '',
+            'current_stock': round(self.product.current_quantity, 4) if self.product else 0.0,
+            'quantity': round(self.quantity, 4),
+            'packaging_type': self.packaging_type or 'Standard',
+            'package_size': self.package_size,
+            'package_unit': self.package_unit or (self.product.unit.symbol if self.product and self.product.unit else ''),
+            'package_count': self.package_count,
+            'package_summary': self.package_summary,
+            'unit_price': self.unit_price,
+            'total_price': self.total_price,
+            'status': self.status or 'Pending',
+            'reorder_date': self.reorder_date.strftime('%d %b %Y') if self.reorder_date else None,
+            'reorder_date_iso': self.reorder_date.isoformat() if self.reorder_date else None,
+            'expected_delivery_date': self.expected_delivery_date.strftime('%d %b %Y') if self.expected_delivery_date else None,
+            'expected_delivery_date_iso': self.expected_delivery_date.isoformat() if self.expected_delivery_date else None,
+            'received_date': self.received_date.strftime('%d %b %Y') if self.received_date else None,
+            'received_date_iso': self.received_date.isoformat() if self.received_date else None,
+            'received_quantity': round(self.received_quantity or 0.0, 4),
+            'remaining_quantity': self.remaining_quantity,
+            'supplier_id': self.supplier_id,
+            'supplier_name': self.supplier,
+            'supplier': self.supplier,
+            'notes': self.notes,
+            'created_by': self.created_by.username if self.created_by else 'Admin',
+            'created_at': self.created_at.strftime('%d %b %Y, %I:%M %p') if self.created_at else None,
+            'updated_at': self.updated_at.strftime('%d %b %Y, %I:%M %p') if self.updated_at else None,
         }
