@@ -193,8 +193,17 @@
       <input type="hidden" id="purchaseQty" name="quantity" value="0" />
 
       <div class="modal-body">
+        <!-- Fixed Product Banner (when opened for a particular row) -->
+        <div id="purchaseFixedProductBanner" style="display:none; background:rgba(45,106,79,0.08); border:1.5px solid var(--green-mid); padding:0.8rem 1rem; border-radius:8px; margin-bottom:1rem;">
+          <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; color:var(--green-mid);">Recording Purchase For:</div>
+          <div id="purchaseFixedProductName" style="font-size:1.15rem; font-weight:700; color:var(--green-dark); margin-top:0.15rem;"></div>
+          <div style="font-size:0.85rem; color:var(--text-mid); margin-top:0.3rem;">
+            Current Available Stock: <strong id="purchaseFixedStockVal" style="color:var(--green-dark);"></strong>
+          </div>
+        </div>
+
         <!-- Step 1: Product -->
-        <div class="form-group">
+        <div class="form-group" id="purchaseProductGroup">
           <label for="purchaseProduct">1. Select Product *</label>
           <select id="purchaseProduct" name="product_id" required>
             <option value="">Select product...</option>
@@ -1043,8 +1052,17 @@
     <form id="formReorder">
       <input type="hidden" id="reorderEditId" value="" />
       <div class="modal-body">
+        <!-- Fixed Product Banner (when opened for a particular row) -->
+        <div id="reorderFixedProductBanner" style="display:none; background:rgba(45,106,79,0.08); border:1.5px solid var(--green-mid); padding:0.8rem 1rem; border-radius:8px; margin-bottom:1rem;">
+          <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; color:var(--green-mid);">Product to Reorder:</div>
+          <div id="reorderFixedProductName" style="font-size:1.15rem; font-weight:700; color:var(--green-dark); margin-top:0.15rem;"></div>
+          <div style="font-size:0.85rem; color:var(--text-mid); margin-top:0.3rem;">
+            Current Available Stock: <strong id="reorderFixedStockVal" style="color:var(--green-dark);"></strong>
+          </div>
+        </div>
+
         <!-- Step 1: Select Product -->
-        <div class="form-group">
+        <div class="form-group" id="reorderProductGroup">
           <label for="reorderProduct">1. Select Product to Reorder *</label>
           <select id="reorderProduct" name="product_id" required>
             <option value="">Select product...</option>
@@ -1205,7 +1223,16 @@
     </div>
     <form id="formAddStock">
       <div class="modal-body">
-        <div class="form-group">
+        <!-- Fixed Product Banner (when opened for a particular row) -->
+        <div id="addStockFixedProductBanner" style="display:none; background:rgba(45,106,79,0.08); border:1.5px solid var(--green-mid); padding:0.8rem 1rem; border-radius:8px; margin-bottom:1rem;">
+          <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; color:var(--green-mid);">Adding Stock To:</div>
+          <div id="addStockFixedProductName" style="font-size:1.15rem; font-weight:700; color:var(--green-dark); margin-top:0.15rem;"></div>
+          <div style="font-size:0.85rem; color:var(--text-mid); margin-top:0.3rem;">
+            Current Available Stock: <strong id="addStockFixedStockVal" style="color:var(--green-dark);"></strong>
+          </div>
+        </div>
+
+        <div class="form-group" id="addStockProductGroup">
           <label for="addStockProduct">1. Select Product *</label>
           <select id="addStockProduct" name="product_id" required>
             <option value="">Select product...</option>
@@ -1302,7 +1329,16 @@
     </div>
     <form id="formEditStock">
       <div class="modal-body">
-        <div class="form-group">
+        <!-- Fixed Product Banner (when opened for a particular row) -->
+        <div id="editStockFixedProductBanner" style="display:none; background:rgba(45,106,79,0.08); border:1.5px solid var(--green-mid); padding:0.8rem 1rem; border-radius:8px; margin-bottom:1rem;">
+          <div style="font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px; font-weight:700; color:var(--green-mid);">Correcting Stock For:</div>
+          <div id="editStockFixedProductName" style="font-size:1.15rem; font-weight:700; color:var(--green-dark); margin-top:0.15rem;"></div>
+          <div style="font-size:0.85rem; color:var(--text-mid); margin-top:0.3rem;">
+            Current Record in Database: <strong id="editStockFixedStockVal" style="color:var(--green-dark);"></strong>
+          </div>
+        </div>
+
+        <div class="form-group" id="editStockProductGroup">
           <label for="editStockProduct">1. Select Product *</label>
           <select id="editStockProduct" name="product_id" required>
             <option value="">Select product...</option>

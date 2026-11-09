@@ -624,20 +624,45 @@ const App = {
 
   triggerReorderFromAlert(productId) {
     if (!productId) return;
+    this.openReorderModal(productId);
+  },
+
+  openPurchaseModal(productId) {
     const form = document.getElementById('formPurchase');
     if (form) form.reset();
     const today = new Date().toISOString().split('T')[0];
     const dIn = document.getElementById('purchaseDate');
-    if (dIn) dIn.value = today;
+    if (dIn) { dIn.value = today; dIn.style.borderColor = ''; }
+    const calcRes = document.getElementById('purchaseCalcResult');
+    if (calcRes) calcRes.textContent = '0 kg';
 
-    const pSelect = document.getElementById('purchaseProduct');
-    if (pSelect) {
-      pSelect.value = productId;
-      if (typeof this.syncPurchasePackagingUI === 'function') {
-        this.syncPurchasePackagingUI(true);
+    const prodSel = document.getElementById('purchaseProduct');
+    const fixedBanner = document.getElementById('purchaseFixedProductBanner');
+    const group = document.getElementById('purchaseProductGroup');
+    const nameEl = document.getElementById('purchaseFixedProductName');
+    const stockEl = document.getElementById('purchaseFixedStockVal');
+    const titleEl = document.getElementById('modalPurchaseTitle');
+
+    if (prodSel && productId) {
+      prodSel.value = String(productId);
+      const prod = (this.state.products || []).find(p => p.id == productId);
+      if (prod && fixedBanner && group && nameEl && stockEl) {
+        nameEl.textContent = prod.name;
+        stockEl.textContent = `${prod.current_quantity} ${prod.unit || ''}`;
+        fixedBanner.style.display = 'block';
+        group.style.display = 'none';
+        if (titleEl) titleEl.textContent = `Record Purchase: ${prod.name}`;
       }
+    } else {
+      if (fixedBanner) fixedBanner.style.display = 'none';
+      if (group) group.style.display = 'block';
+      if (titleEl) titleEl.textContent = 'Record New Purchase';
     }
+
     this.openModal('modalPurchase');
+    if (typeof this.syncPurchasePackagingUI === 'function') {
+      this.syncPurchasePackagingUI(true);
+    }
   },
 
   // ── Sidebar Drawer for Mobile & Tablet ─────────────────────────────────────
@@ -974,13 +999,7 @@ const App = {
     const btnQP = document.getElementById('btnQuickPurchase');
     if (btnQP) {
       btnQP.addEventListener('click', () => {
-        const form = document.getElementById('formPurchase');
-        form.reset();
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('purchaseDate').value = today;
-        document.getElementById('purchaseCalcResult').textContent = '0 kg';
-        this.openModal('modalPurchase');
-        this.syncPurchasePackagingUI();
+        this.openPurchaseModal();
       });
     }
 
@@ -2356,8 +2375,26 @@ const App = {
     if (countIn) countIn.value = '1';
 
     const prodSel = document.getElementById('reorderProduct');
+    const fixedBanner = document.getElementById('reorderFixedProductBanner');
+    const group = document.getElementById('reorderProductGroup');
+    const nameEl = document.getElementById('reorderFixedProductName');
+    const stockEl = document.getElementById('reorderFixedStockVal');
+    const titleEl = document.getElementById('modalReorderTitle');
+
     if (prodSel && productId) {
-      prodSel.value = productId;
+      prodSel.value = String(productId);
+      const prod = (this.state.products || []).find(p => p.id == productId);
+      if (prod && fixedBanner && group && nameEl && stockEl) {
+        nameEl.textContent = prod.name;
+        stockEl.textContent = `${prod.current_quantity} ${prod.unit || ''}`;
+        fixedBanner.style.display = 'block';
+        group.style.display = 'none';
+        if (titleEl) titleEl.textContent = `Request Reorder: ${prod.name}`;
+      }
+    } else {
+      if (fixedBanner) fixedBanner.style.display = 'none';
+      if (group) group.style.display = 'block';
+      if (titleEl) titleEl.textContent = 'Request Reorder Stock';
     }
     this.syncReorderPackagingUI(true);
     this.openModal('modalReorder');
@@ -2558,8 +2595,26 @@ const App = {
     if (countIn) countIn.value = '1';
 
     const prodSel = document.getElementById('addStockProduct');
+    const fixedBanner = document.getElementById('addStockFixedProductBanner');
+    const group = document.getElementById('addStockProductGroup');
+    const nameEl = document.getElementById('addStockFixedProductName');
+    const stockEl = document.getElementById('addStockFixedStockVal');
+    const titleEl = document.getElementById('modalAddStockTitle');
+
     if (prodSel && productId) {
-      prodSel.value = productId;
+      prodSel.value = String(productId);
+      const prod = (this.state.products || []).find(p => p.id == productId);
+      if (prod && fixedBanner && group && nameEl && stockEl) {
+        nameEl.textContent = prod.name;
+        stockEl.textContent = `${prod.current_quantity} ${prod.unit || ''}`;
+        fixedBanner.style.display = 'block';
+        group.style.display = 'none';
+        if (titleEl) titleEl.textContent = `Add Stock: ${prod.name}`;
+      }
+    } else {
+      if (fixedBanner) fixedBanner.style.display = 'none';
+      if (group) group.style.display = 'block';
+      if (titleEl) titleEl.textContent = 'Add Stock Quantity';
     }
     this.syncAddStockPackagingUI(true);
     this.openModal('modalAddStock');
@@ -2641,8 +2696,26 @@ const App = {
     if (dIn) dIn.value = new Date().toISOString().split('T')[0];
 
     const prodSel = document.getElementById('editStockProduct');
+    const fixedBanner = document.getElementById('editStockFixedProductBanner');
+    const group = document.getElementById('editStockProductGroup');
+    const nameEl = document.getElementById('editStockFixedProductName');
+    const stockEl = document.getElementById('editStockFixedStockVal');
+    const titleEl = document.getElementById('modalEditStockTitle');
+
     if (prodSel && productId) {
-      prodSel.value = productId;
+      prodSel.value = String(productId);
+      const prod = (this.state.products || []).find(p => p.id == productId);
+      if (prod && fixedBanner && group && nameEl && stockEl) {
+        nameEl.textContent = prod.name;
+        stockEl.textContent = `${prod.current_quantity} ${prod.unit || ''}`;
+        fixedBanner.style.display = 'block';
+        group.style.display = 'none';
+        if (titleEl) titleEl.textContent = `Correct Stock: ${prod.name}`;
+      }
+    } else {
+      if (fixedBanner) fixedBanner.style.display = 'none';
+      if (group) group.style.display = 'block';
+      if (titleEl) titleEl.textContent = 'Edit / Correct Stock';
     }
     this.syncEditStockUI();
     this.openModal('modalEditStock');

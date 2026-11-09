@@ -228,10 +228,10 @@ const ProductsView = {
                   </td>
                   <td style="text-align:right; white-space:nowrap;">
                     <button class="btn btn-primary btn-sm btn-row-add-stock" data-id="${p.id}" data-name="${p.name}" title="Add Stock" style="padding:0.25rem 0.55rem; font-size:0.78rem;">+ Stock</button>
-                    <button class="btn btn-secondary btn-sm btn-row-edit-stock" data-id="${p.id}" data-name="${p.name}" title="Edit / Correct Stock" style="padding:0.25rem 0.55rem; font-size:0.78rem;">✏️ Edit</button>
+                    <button class="btn btn-ghost btn-sm btn-edit-product" data-id="${p.id}" title="Edit product details" style="padding:0.25rem 0.55rem; font-size:0.78rem;">✏️ Edit</button>
                     <button class="btn btn-ghost btn-sm btn-row-reorder" data-id="${p.id}" data-name="${p.name}" title="Reorder from vendor" style="padding:0.25rem 0.55rem; font-size:0.78rem;">🔄 Reorder</button>
-                    <button class="btn btn-ghost btn-sm btn-view-product" data-id="${p.id}" title="History & Audit">🔍</button>
-                    <button class="btn btn-danger btn-sm btn-delete-product" data-id="${p.id}" data-name="${p.name}" title="Archive">🗑️</button>
+                    <button class="btn btn-ghost btn-sm btn-view-product" data-id="${p.id}" title="History, Ledger & Details" style="padding:0.25rem 0.55rem; font-size:0.78rem;">🔍</button>
+                    <button class="btn btn-danger btn-sm btn-delete-product" data-id="${p.id}" data-name="${p.name}" title="Archive" style="padding:0.25rem 0.55rem; font-size:0.78rem;">🗑️</button>
                   </td>
                 </tr>
               `;
@@ -649,135 +649,8 @@ const ProductsView = {
         const origHtml = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '⏳';
-
         try {
-          const res = await fetch(`/api/products/${id}`);
-          if (!res.ok) throw new Error('Could not fetch details from database');
-          const data = await res.json();
-          const p = data.product || data.data;
-
-          document.getElementById('productEditId').value = p.id;
-          document.getElementById('modalProductTitle').textContent = `Edit "${p.name}"`;
-          const submitBtn = document.getElementById('btnSubmitProduct');
-          if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.textContent = 'Save Changes';
-          }
-          document.getElementById('productName').value = p.name;
-
-          // Ensure category dropdown is populated and selected
-          const catSel = document.getElementById('productCategory');
-          if (catSel) {
-            if (catSel.options.length <= 1 && App.state.categories?.length) {
-              catSel.innerHTML = '<option value="">Select category...</option>' +
-                App.state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-            }
-            catSel.value = p.category_id ? String(p.category_id) : '';
-          }
-
-          document.getElementById('productUnit').value = p.unit_id || '';
-          document.getElementById('productMinStock').value = p.minimum_stock;
-          document.getElementById('productStatusSelect').value = p.is_active ? 'true' : 'false';
-          document.getElementById('productDesc').value = p.description || '';
-          if (document.getElementById('productDate')) {
-            document.getElementById('productDate').value = p.product_date_iso || (p.created_at ? new Date(p.created_at).toISOString().split('T')[0] : '');
-          }
-
-          // Match unit / package dropdown option
-          const pkgSel = document.getElementById('productUnitPackage');
-          if (pkgSel) {
-            let matchOpt = null;
-            const pType = (p.default_packaging_type || '').toLowerCase();
-            const pSize = parseFloat(p.default_package_size);
-            const pUnit = (p.default_package_unit || p.unit || '').toLowerCase();
-
-            // 1st pass: match by package size + packaging type + unit symbol
-            for (let i = 0; i < pkgSel.options.length; i++) {
-              const opt = pkgSel.options[i];
-              const optType = (opt.dataset.type || '').toLowerCase();
-              const optSize = parseFloat(opt.dataset.size);
-              const optUnit = (opt.dataset.unit || '').toLowerCase();
-              if (pSize && Math.abs(optSize - pSize) < 0.001 && optType === pType && (optUnit === pUnit || !pUnit)) {
-                matchOpt = opt;
-                break;
-              }
-            }
-            // 2nd pass: match by package size + packaging type
-            if (!matchOpt) {
-              for (let i = 0; i < pkgSel.options.length; i++) {
-                const opt = pkgSel.options[i];
-                const optType = (opt.dataset.type || '').toLowerCase();
-                const optSize = parseFloat(opt.dataset.size);
-                if (pSize && Math.abs(optSize - pSize) < 0.001 && optType === pType) {
-                  matchOpt = opt;
-                  break;
-                }
-              }
-            }
-            // 3rd pass: loose / direct unit matching
-            if (!matchOpt) {
-              for (let i = 0; i < pkgSel.options.length; i++) {
-                const opt = pkgSel.options[i];
-                const optUnit = (opt.dataset.unit || '').toLowerCase();
-                const optBase = (opt.dataset.base || '').toLowerCase();
-                const optType = (opt.dataset.type || '').toLowerCase();
-                if (optUnit === pUnit || optBase === pUnit) {
-                  if ((pType === 'loose' || pType === 'unit') && (optType === 'loose' || optType === 'unit')) {
-                    matchOpt = opt;
-                    break;
-                  } else if (!matchOpt) {
-                    matchOpt = opt;
-                  }
-                }
-              }
-            }
-            if (matchOpt) {
-              pkgSel.value = matchOpt.value;
-            }
-          }
-
-          if (document.getElementById('productDefaultPackagingType')) {
-            document.getElementById('productDefaultPackagingType').value = p.default_packaging_type || 'Bag';
-          }
-          if (document.getElementById('productDefaultPackageSize')) {
-            document.getElementById('productDefaultPackageSize').value = p.default_package_size || '';
-          }
-          if (document.getElementById('productDefaultQuantity')) {
-            document.getElementById('productDefaultQuantity').value = p.default_package_count || 1;
-          }
-
-          // Keep current stock inputs and live card visible so user can adjust quantity
-          const openInputs = document.getElementById('productOpeningStockInputs');
-          const openCard = document.getElementById('productOpeningStockCard');
-          if (openInputs) openInputs.style.display = 'flex';
-          if (openCard) openCard.style.display = 'block';
-
-          const bagIn = document.getElementById('productBagQuantity');
-          const looseIn = document.getElementById('productLooseQuantity');
-          if (bagIn) {
-            if (p.bag_stock !== undefined && p.bag_stock !== null && p.bag_stock > 0) {
-              bagIn.value = p.bag_stock;
-            } else if (p.default_package_size && p.default_package_size > 0 && (p.default_packaging_type || '').toLowerCase() === 'bag') {
-              bagIn.value = p.default_package_count || (Math.round((p.current_quantity / p.default_package_size) * 100) / 100) || 1;
-            } else {
-              bagIn.value = p.current_quantity || 0;
-            }
-          }
-          if (looseIn) {
-            looseIn.value = (p.loose_stock !== undefined && p.loose_stock !== null) ? p.loose_stock : 0;
-          }
-          try {
-            if (typeof this.updateOpeningStockCalc === 'function') {
-              this.updateOpeningStockCalc(true);
-            } else if (typeof window.updateOpeningStockCalc === 'function') {
-              window.updateOpeningStockCalc(true);
-            } else if (typeof updateOpeningStockCalc === 'function') {
-              updateOpeningStockCalc(true);
-            }
-          } catch (_) {}
-          App.openModal('modalProduct');
-        } catch (err) {
-          App.showToast(err.message, 'error');
+          await this.openEditProductModal(id);
         } finally {
           btn.disabled = false;
           btn.innerHTML = origHtml;
@@ -829,6 +702,138 @@ const ProductsView = {
     });
   },
 
+  async openEditProductModal(id) {
+    try {
+      const res = await fetch(`/api/products/${id}`);
+      if (!res.ok) throw new Error('Could not fetch details from database');
+      const data = await res.json();
+      const p = data.product || data.data;
+
+      document.getElementById('productEditId').value = p.id;
+      document.getElementById('modalProductTitle').textContent = `Edit "${p.name}"`;
+      const submitBtn = document.getElementById('btnSubmitProduct');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Save Changes';
+      }
+      document.getElementById('productName').value = p.name;
+
+      // Ensure category dropdown is populated and selected
+      const catSel = document.getElementById('productCategory');
+      if (catSel) {
+        if (catSel.options.length <= 1 && App.state.categories?.length) {
+          catSel.innerHTML = '<option value="">Select category...</option>' +
+            App.state.categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+        }
+        catSel.value = p.category_id ? String(p.category_id) : '';
+      }
+
+      document.getElementById('productUnit').value = p.unit_id || '';
+      document.getElementById('productMinStock').value = p.minimum_stock;
+      document.getElementById('productStatusSelect').value = p.is_active ? 'true' : 'false';
+      document.getElementById('productDesc').value = p.description || '';
+      if (document.getElementById('productDate')) {
+        document.getElementById('productDate').value = p.product_date_iso || (p.created_at ? new Date(p.created_at).toISOString().split('T')[0] : '');
+      }
+
+      // Match unit / package dropdown option
+      const pkgSel = document.getElementById('productUnitPackage');
+      if (pkgSel) {
+        let matchOpt = null;
+        const pType = (p.default_packaging_type || '').toLowerCase();
+        const pSize = parseFloat(p.default_package_size);
+        const pUnit = (p.default_package_unit || p.unit || '').toLowerCase();
+
+        // 1st pass: match by package size + packaging type + unit symbol
+        for (let i = 0; i < pkgSel.options.length; i++) {
+          const opt = pkgSel.options[i];
+          const optType = (opt.dataset.type || '').toLowerCase();
+          const optSize = parseFloat(opt.dataset.size);
+          const optUnit = (opt.dataset.unit || '').toLowerCase();
+          if (pSize && Math.abs(optSize - pSize) < 0.001 && optType === pType && (optUnit === pUnit || !pUnit)) {
+            matchOpt = opt;
+            break;
+          }
+        }
+        // 2nd pass: match by package size + packaging type
+        if (!matchOpt) {
+          for (let i = 0; i < pkgSel.options.length; i++) {
+            const opt = pkgSel.options[i];
+            const optType = (opt.dataset.type || '').toLowerCase();
+            const optSize = parseFloat(opt.dataset.size);
+            if (pSize && Math.abs(optSize - pSize) < 0.001 && optType === pType) {
+              matchOpt = opt;
+              break;
+            }
+          }
+        }
+        // 3rd pass: loose / direct unit matching
+        if (!matchOpt) {
+          for (let i = 0; i < pkgSel.options.length; i++) {
+            const opt = pkgSel.options[i];
+            const optUnit = (opt.dataset.unit || '').toLowerCase();
+            const optBase = (opt.dataset.base || '').toLowerCase();
+            const optType = (opt.dataset.type || '').toLowerCase();
+            if (optUnit === pUnit || optBase === pUnit) {
+              if ((pType === 'loose' || pType === 'unit') && (optType === 'loose' || optType === 'unit')) {
+                matchOpt = opt;
+                break;
+              } else if (!matchOpt) {
+                matchOpt = opt;
+              }
+            }
+          }
+        }
+        if (matchOpt) {
+          pkgSel.value = matchOpt.value;
+        }
+      }
+
+      if (document.getElementById('productDefaultPackagingType')) {
+        document.getElementById('productDefaultPackagingType').value = p.default_packaging_type || 'Bag';
+      }
+      if (document.getElementById('productDefaultPackageSize')) {
+        document.getElementById('productDefaultPackageSize').value = p.default_package_size || '';
+      }
+      if (document.getElementById('productDefaultQuantity')) {
+        document.getElementById('productDefaultQuantity').value = p.default_package_count || 1;
+      }
+
+      // Keep current stock inputs and live card visible so user can adjust quantity
+      const openInputs = document.getElementById('productOpeningStockInputs');
+      const openCard = document.getElementById('productOpeningStockCard');
+      if (openInputs) openInputs.style.display = 'flex';
+      if (openCard) openCard.style.display = 'block';
+
+      const bagIn = document.getElementById('productBagQuantity');
+      const looseIn = document.getElementById('productLooseQuantity');
+      if (bagIn) {
+        if (p.bag_stock !== undefined && p.bag_stock !== null && p.bag_stock > 0) {
+          bagIn.value = p.bag_stock;
+        } else if (p.default_package_size && p.default_package_size > 0 && (p.default_packaging_type || '').toLowerCase() === 'bag') {
+          bagIn.value = p.default_package_count || (Math.round((p.current_quantity / p.default_package_size) * 100) / 100) || 1;
+        } else {
+          bagIn.value = p.current_quantity || 0;
+        }
+      }
+      if (looseIn) {
+        looseIn.value = (p.loose_stock !== undefined && p.loose_stock !== null) ? p.loose_stock : 0;
+      }
+      try {
+        if (typeof this.updateOpeningStockCalc === 'function') {
+          this.updateOpeningStockCalc(true);
+        } else if (typeof window.updateOpeningStockCalc === 'function') {
+          window.updateOpeningStockCalc(true);
+        } else if (typeof updateOpeningStockCalc === 'function') {
+          updateOpeningStockCalc(true);
+        }
+      } catch (_) {}
+      App.openModal('modalProduct');
+    } catch (err) {
+      App.showToast(err.message, 'error');
+    }
+  },
+
   // SECTION 21: Full Product Details with Purchase History, Usage History, Ledger, and Package Breakdown
   async openProductDetail(productId) {
     App.openModal('modalProductDetail');
@@ -859,6 +864,16 @@ const ProductsView = {
           <div style="color:var(--muted); font-size:0.78rem;">
             System Record: ${p.created_at || ''}
           </div>
+        </div>
+
+        <!-- Quick Action Bar for This Specific Product -->
+        <div style="background:#f8fafc; border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem 0.8rem; margin-bottom:1.25rem; display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center;">
+          <span style="font-size:0.75rem; font-weight:700; color:var(--text-mid); text-transform:uppercase; letter-spacing:0.5px; margin-right:0.25rem;">Quick Actions:</span>
+          <button type="button" class="btn btn-primary btn-sm" id="btnDetailAddStock" style="padding:0.25rem 0.65rem; font-size:0.78rem;">+ Add Stock</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btnDetailEditStock" style="padding:0.25rem 0.65rem; font-size:0.78rem;">✏️ Recount / Correct Stock</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnDetailReorder" style="padding:0.25rem 0.65rem; font-size:0.78rem;">🔄 Reorder</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnDetailPurchase" style="padding:0.25rem 0.65rem; font-size:0.78rem;">🛒 Record Purchase</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="btnDetailEditProduct" style="padding:0.25rem 0.65rem; font-size:0.78rem;">📝 Edit Details</button>
         </div>
 
         <!-- High Level Stats -->
@@ -1030,6 +1045,28 @@ const ProductsView = {
           </table>
         </div>
       `;
+
+      // Wire Detail Quick Actions (all locked to this specific product)
+      document.getElementById('btnDetailAddStock')?.addEventListener('click', () => {
+        App.closeModal('modalProductDetail');
+        App.openAddStockModal(p.id);
+      });
+      document.getElementById('btnDetailEditStock')?.addEventListener('click', () => {
+        App.closeModal('modalProductDetail');
+        App.openEditStockModal(p.id);
+      });
+      document.getElementById('btnDetailReorder')?.addEventListener('click', () => {
+        App.closeModal('modalProductDetail');
+        App.openReorderModal(p.id);
+      });
+      document.getElementById('btnDetailPurchase')?.addEventListener('click', () => {
+        App.closeModal('modalProductDetail');
+        App.openPurchaseModal(p.id);
+      });
+      document.getElementById('btnDetailEditProduct')?.addEventListener('click', () => {
+        App.closeModal('modalProductDetail');
+        this.openEditProductModal(p.id);
+      });
     } catch (err) {
       body.innerHTML = `<div class="alert alert-error">Error loading product details from database: ${err.message}</div>`;
     }

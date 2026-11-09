@@ -292,14 +292,7 @@ const PurchasesView = {
     });
 
     document.getElementById('btnOpenNewPurchase')?.addEventListener('click', () => {
-      document.getElementById('formPurchase').reset();
-      const today = new Date().toISOString().split('T')[0];
-      const dIn = document.getElementById('purchaseDate');
-      if (dIn) { dIn.value = today; dIn.style.borderColor = ''; }
-      App.openModal('modalPurchase');
-      if (typeof App.syncPurchasePackagingUI === 'function') {
-        App.syncPurchasePackagingUI(true);
-      }
+      App.openPurchaseModal();
     });
 
     // Exports

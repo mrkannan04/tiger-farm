@@ -29,11 +29,16 @@ if os.path.exists(INSTANCE_DB) and not os.path.exists(DEFAULT_DB_PATH):
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'tiger-farm-secret-key-2024')
 
+    # Central Neon Cloud PostgreSQL Database URL (ensures multi-device real-time sync on Vercel)
+    DEFAULT_NEON_DATABASE_URL = (
+        'postgresql://neondb_owner:npg_stY2uU7jkcmW@ep-raspy-violet-b5wdqkpp-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
+    )
+
     # Support external cloud databases (PostgreSQL, Neon, Supabase, Render, etc.)
     if os.environ.get('USE_SQLITE') == '1' or os.environ.get('FLASK_ENV') == 'testing':
         raw_db_url = None
     else:
-        raw_db_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL')
+        raw_db_url = os.environ.get('DATABASE_URL') or os.environ.get('POSTGRES_URL') or DEFAULT_NEON_DATABASE_URL
         if raw_db_url and raw_db_url.startswith('postgres://'):
             raw_db_url = raw_db_url.replace('postgres://', 'postgresql://', 1)
 
